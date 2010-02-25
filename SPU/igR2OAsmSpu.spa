@@ -1,0 +1,4524 @@
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_RefinementCopyMajorEven(f32 *dest, u32 dc, u32 dr, f32 *src, u32 src_stride)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// {
+//   u32 qdc = dc >> 2;
+// 
+//   // loop over destination columns
+//   for (u32 c=0; c<dc; c+=4)
+//   {
+//     vf32 *p_dest    = (vf32 *)&dest[c];
+//     f32  *p_src_f32 = &src[-(c>>1)*(src_stride-1)];
+// 
+//     // loop over destination rows
+//     for (u32 r=0; r<dr; r+=2)
+//     {
+//       // advance queue
+//       a03 = b03;
+// 
+//       // get alignment shuffle
+//       byte = (u32)p_src_f32 & 0xF;
+//       shuf = spu_splats(byte);
+//       shuf = (vu8)spu_add((vu32)shuf, (vu32)shuf_ABCD);
+// 
+//       // get next row of input
+//       bL = *(vf32 *)(p_src_f32+0);
+//       bR = *(vf32 *)(p_src_f32+4);
+//       b03 = spu_shuffle(bL, bR, shuf);
+// 
+//       // shuffle
+//       out = spu_sel(a03, b03, mask_FF00);
+// 
+//       // output
+//       *p_dest = out;
+// 
+//       // step pointers
+//       p_src_f32 += src_stride + 1;
+//       p_dest += qdc;
+//     }
+//   }
+// }
+
+
+/*            /\
+             /..\
+            /    \
+    a0  a1 /a2  a3>
+          /      /
+         /..  ../               ->    (b0,b1,a2,a3)
+        /      /
+       <b0  b1/ b2  b3
+        \    /
+         \../
+          \/
+*/
+
+
+.cfunc void R2O_RefinementCopyMajorEven(f32 *dest, u32 dc, u32 dr, f32 *src, u32 src_stride)
+
+    .reg      qdc, src_stride_p1, src_stride_m1, d_src, d_p_src, p_src, p_dest, r
+    .reg      a03, b03, byte, shuf, bL, bR, out, shuf_ABCD, mask_FF00, shuf_DDDDDDDDDDDDDDDD
+
+    .extern   shuf_ABCD
+    lqa       shuf_ABCD, shuf_ABCD
+    fsmbi     mask_FF00, 0xFF00
+    ilh       shuf_DDDDDDDDDDDDDDDD, 0x0303
+
+    shli      qdc, dc, 2
+
+    ai        src_stride_p1, src_stride,  1
+    ai        src_stride_m1, src_stride, -1
+
+    shli      d_p_src, src_stride_p1, 2
+    shli      d_src,   src_stride_m1, 3
+
+outer_loop:
+
+    mov       p_src,  src
+    mov       p_dest, dest
+
+    sf        src,  d_src, src
+    ai        dest, dest,  16
+
+    mov       r, dr
+
+inner_loop:
+
+    // advance queue
+    mov       a03, b03
+
+    // get alignment shuffle
+    andi      byte, p_src, 0xF
+    shufb     byte, byte, byte, shuf_DDDDDDDDDDDDDDDD
+    a         shuf, shuf_ABCD, byte
+
+    // get next row of input
+    lqd       bL, 0(p_src)
+    lqd       bR, 16(p_src)
+    shufb     b03, bL, bR, shuf
+
+    // inverleave
+    selb      out, a03, b03, mask_FF00
+
+    // output
+    stqd      out, 0(p_dest)
+
+    // step pointers
+    a         p_src,  p_src,  d_p_src
+    a         p_dest, p_dest, qdc
+
+    // loop inner
+    ai        r, r, -2
+    brnz      r, inner_loop
+
+    // loop outer
+    ai        dc, dc, -4
+    brnz      dc, outer_loop
+
+
+.endfunc
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_RefinementCopyMinorEven(f32 *dest, u32 dc, u32 dr, f32 *src, u32 src_stride)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// {
+//   u32 qdc = dc >> 2;
+// 
+//   // loop over destination columns
+//   for (u32 c=0; c<dc; c+=4)
+//   {
+//     vf32 *p_dest    = (vf32 *)&dest[c];
+//     f32  *p_src_f32 = &src[-(c>>1)*(src_stride-1)] - (src_stride + 1);
+// 
+//     // get alignment shuffle
+//     byte = (u32)p_src_f32 & 0xF;
+//     shuf = spu_splats(byte);
+//     shuf = (vu8)spu_add((vu32)shuf, (vu32)shuf_ABCD);
+// 
+//     // initialize input queue
+//     cL = *(vf32 *)(p_src_f32+0);
+//     cR = *(vf32 *)(p_src_f32+4);
+//     c03 = spu_shuffle(cL, cR, shuf);
+// 
+//     // step source pointer
+//     p_src_f32 += src_stride + 1;
+// 
+//     // loop over destination rows
+//     for (u32 r=0; r<dr; r+=2)
+//     {
+//       // advance queue
+//       a03 = b03;
+//       b03 = c03;
+// 
+//       // get alignment shuffle
+//       byte = (u32)p_src_f32 & 0xF;
+//       shuf = spu_splats(byte);
+//       shuf = (vu8)spu_add((vu32)shuf, (vu32)shuf_ABCD);
+// 
+//       // get next row of input
+//       cL = *(vf32 *)(p_src_f32+0);
+//       cR = *(vf32 *)(p_src_f32+4);
+//       c03 = spu_shuffle(cL, cR, shuf);
+// 
+//       // shuffle
+//       out = spu_sel(b03, c03, mask_F000);
+//       out = spu_sel(out, a03, mask_000F);
+// 
+//       // output
+//       *p_dest = out;
+// 
+//       // step pointers
+//       p_src_f32 += src_stride + 1;
+//       p_dest += qdc;
+//     }
+//   }
+// }
+
+
+
+.cfunc void R2O_RefinementCopyMinorEven(f32 *dest, u32 dc, u32 dr, f32 *src, u32 src_stride)
+
+    .reg      qdc, src_stride_p1, src_stride_m1, d_src, d_p_src, p_src, p_dest, r, shuf_DDDDDDDDDDDDDDDD
+    .reg      a03, b03, c03, byte, shuf, cL, cR, temp, out, shuf_ABCD, mask_F000, mask_000F
+
+    il128     shuf_ABCD, 0x00010203_04050607_08090A0B_0C0D0E0F
+    fsmbi     mask_F000, 0xF000
+    fsmbi     mask_000F, 0x000F
+    ilh       shuf_DDDDDDDDDDDDDDDD, 0x0303
+
+    shli      qdc, dc, 2
+
+    ai        src_stride_p1, src_stride,  1
+    ai        src_stride_m1, src_stride, -1
+
+    shli      d_p_src, src_stride_p1, 2
+    shli      d_src,   src_stride_m1, 3
+
+outer_loop:
+
+    sf        p_src,  d_p_src, src
+    mov       p_dest, dest
+
+    sf        src,  d_src, src
+    ai        dest, dest, 16
+
+    // get alignment shuffle
+    andi      byte, p_src, 0xF
+    shufb     byte, byte, byte, shuf_DDDDDDDDDDDDDDDD
+    a         shuf, shuf_ABCD, byte
+  
+    // initialize input queue
+    lqd       cL, 0(p_src)
+    lqd       cR, 16(p_src)
+    shufb     c03, cL, cR, shuf
+  
+    // step source pointer
+    a         p_src, p_src, d_p_src
+  
+    mov       r, dr
+
+inner_loop:
+
+    // advance queue
+    rotqbyi   a03, b03, 0
+    rotqbyi   b03, c03, 0
+
+    // get alignment shuffle
+    andi      byte, p_src, 0xF
+    shufb     byte, byte, byte, shuf_DDDDDDDDDDDDDDDD
+    a         shuf, shuf_ABCD, byte
+
+    // get next row of input
+    lqd       cL, 0(p_src)
+    lqd       cR, 16(p_src)
+    shufb     c03, cL, cR, shuf
+
+    // inverleave
+    selb      temp, b03,  c03, mask_F000
+    selb      out,  temp, a03, mask_000F
+
+    // output
+    stqd      out, 0(p_dest)
+
+    // step pointers
+    a         p_src,  p_src,  d_p_src
+    a         p_dest, p_dest, qdc
+
+    // loop inner
+    ai        r, r, -2
+    brnz      r, inner_loop
+
+    // loop outer
+    ai        dc, dc, -4
+    brnz      dc, outer_loop
+
+
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_RefinementCopyMajorOdd(f32 *dest, u32 dc, u32 dr, f32 *src, u32 src_stride)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// {
+//   u32 qdc = dc >> 2;
+// 
+//   // loop over destination columns
+//   for (u32 c=0; c<dc; c+=4)
+//   {
+//     vf32 *p_dest    = (vf32 *)&dest[c];
+//     f32  *p_src_f32 = &src[(c>>1)*(src_stride+1)] + (src_stride - 1);
+// 
+//     // get alignment shuffle
+//     byte = (u32)p_src_f32 & 0xF;
+//     shuf = spu_splats(byte);
+//     shuf = (vu8)spu_add((vu32)shuf, (vu32)shuf_ABCD);
+// 
+//     // initialize input queue
+//     cL = *(vf32 *)(p_src_f32+0);
+//     cR = *(vf32 *)(p_src_f32+4);
+//     c03 = spu_shuffle(cL, cR, shuf);
+// 
+//     // step source pointer
+//     p_src_f32 += src_stride - 1;
+// 
+//     // loop over destination rows
+//     for (u32 r=0; r<dr; r+=2)
+//     {
+//       // advance queue
+//       a03 = b03;
+//       b03 = c03;
+// 
+//       // get alignment shuffle
+//       byte = (u32)p_src_f32 & 0xF;
+//       shuf = spu_splats(byte);
+//       shuf = (vu8)spu_add((vu32)shuf, (vu32)shuf_ABCD);
+// 
+//       // get next row of input
+//       cL = *(vf32 *)(p_src_f32+0);
+//       cR = *(vf32 *)(p_src_f32+4);
+//       c03 = spu_shuffle(cL, cR, shuf);
+// 
+//       // shuffle
+//       out = spu_sel(b03, a03, mask_F000);
+//       out = spu_sel(out, c03, mask_000F);
+// 
+//       // output
+//       *p_dest = out;
+// 
+//       // step pointers
+//       p_src_f32 += src_stride - 1;
+//       p_dest += qdc;
+//     }
+//   }
+// }
+
+
+.cfunc void R2O_RefinementCopyMajorOdd(f32 *dest, u32 dc, u32 dr, f32 *src, u32 src_stride)
+
+    .reg      qdc, src_stride_p1, src_stride_m1, d_src, d_p_src, p_src, p_dest, r, shuf_DDDDDDDDDDDDDDDD
+    .reg      a03, b03, c03, byte, shuf, cL, cR, temp, out, shuf_ABCD, mask_F000, mask_000F
+
+    il128     shuf_ABCD, 0x00010203_04050607_08090A0B_0C0D0E0F
+    fsmbi     mask_F000, 0xF000
+    fsmbi     mask_000F, 0x000F
+    ilh       shuf_DDDDDDDDDDDDDDDD, 0x0303
+
+    shli      qdc, dc, 2
+
+    ai        src_stride_p1, src_stride,  1
+    ai        src_stride_m1, src_stride, -1
+
+    shli      d_p_src, src_stride_m1, 2
+    shli      d_src,   src_stride_p1, 3
+
+outer_loop:
+
+    a         p_src,  src, d_p_src
+    mov       p_dest, dest
+
+    a         src,  src, d_src
+    ai        dest, dest, 16
+
+    // get alignment shuffle
+    andi      byte, p_src, 0xF
+    shufb     byte, byte, byte, shuf_DDDDDDDDDDDDDDDD
+    a         shuf, shuf_ABCD, byte
+  
+    // initialize input queue
+    lqd       cL, 0(p_src)
+    lqd       cR, 16(p_src)
+    shufb     c03, cL, cR, shuf
+  
+    // step source pointer
+    a         p_src, p_src, d_p_src
+  
+    mov       r, dr
+
+inner_loop:
+
+    // advance queue
+    rotqbyi   a03, b03, 0
+    rotqbyi   b03, c03, 0
+
+    // get alignment shuffle
+    andi      byte, p_src, 0xF
+    shufb     byte, byte, byte, shuf_DDDDDDDDDDDDDDDD
+    a         shuf, shuf_ABCD, byte
+
+    // get next row of input
+    lqd       cL, 0(p_src)
+    lqd       cR, 16(p_src)
+    shufb     c03, cL, cR, shuf
+
+    // inverleave
+    selb      temp, b03,  a03, mask_F000
+    selb      out,  temp, c03, mask_000F
+
+    // output
+    stqd      out, 0(p_dest)
+
+    // step pointers
+    a         p_src,  p_src,  d_p_src
+    a         p_dest, p_dest, qdc
+
+    // loop inner
+    ai        r, r, -2
+    brnz      r, inner_loop
+
+    // loop outer
+    ai        dc, dc, -4
+    brnz      dc, outer_loop
+
+
+.endfunc
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_RefinementCopyMinorOdd(f32 *dest, u32 dc, u32 dr, f32 *src, u32 src_stride)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// {
+//   u32 qdc = dc >> 2;
+// 
+//   // loop over destination columns
+//   for (u32 c=0; c<dc; c+=4)
+//   {
+//     vf32 *p_dest    = (vf32 *)&dest[c];
+//     f32  *p_src_f32 = &src[(c>>1)*(src_stride+1)] + (src_stride - 1);
+// 
+//     // loop over destination rows
+//     for (u32 r=0; r<dr; r+=2)
+//     {
+//       // advance queue
+//       a03 = b03;
+// 
+//       // get alignment shuffle
+//       byte = (u32)p_src_f32 & 0xF;
+//       shuf = spu_splats(byte);
+//       shuf = (vu8)spu_add((vu32)shuf, (vu32)shuf_ABCD);
+// 
+//       // get next row of input
+//       bL = *(vf32 *)(p_src_f32+0);
+//       bR = *(vf32 *)(p_src_f32+4);
+//       b03 = spu_shuffle(bL, bR, shuf);
+// 
+//       // shuffle
+//       out = spu_sel(a03, b03, mask_00FF);
+// 
+//       // output
+//       *p_dest = out;
+// 
+//       // step pointers
+//       p_src_f32 += src_stride - 1;
+//       p_dest += qdc;
+//     }
+//   }
+// }
+
+
+.cfunc void R2O_RefinementCopyMinorOdd(f32 *dest, u32 dc, u32 dr, f32 *src, u32 src_stride)
+
+    .reg      qdc, src_stride_p1, src_stride_m1, d_src, d_p_src, p_src, p_dest, r
+    .reg      a03, b03, byte, shuf, bL, bR, out, shuf_ABCD, mask_FF00, shuf_DDDDDDDDDDDDDDDD
+
+    il128     shuf_ABCD, 0x00010203_04050607_08090A0B_0C0D0E0F
+    fsmbi     mask_FF00, 0xFF00
+    ilh       shuf_DDDDDDDDDDDDDDDD, 0x0303
+
+    shli      qdc, dc, 2
+
+    ai        src_stride_p1, src_stride,  1
+    ai        src_stride_m1, src_stride, -1
+
+    shli      d_p_src, src_stride_m1, 2                   // ###
+    shli      d_src,   src_stride_p1, 3                   // ###
+
+outer_loop:
+
+    a         p_src,  src, d_p_src                        // ###
+    mov       p_dest, dest
+
+    a         src,  src, d_src                            // ###
+    ai        dest, dest,  16
+
+    mov       r, dr
+
+inner_loop:
+
+    // advance queue
+    mov       a03, b03
+
+    // get alignment shuffle
+    andi      byte, p_src, 0xF
+    shufb     byte, byte, byte, shuf_DDDDDDDDDDDDDDDD
+    a         shuf, shuf_ABCD, byte
+
+    // get next row of input
+    lqd       bL, 0(p_src)
+    lqd       bR, 16(p_src)
+    shufb     b03, bL, bR, shuf
+
+    // inverleave
+    selb      out, b03, a03, mask_FF00                    // ###
+
+    // output
+    stqd      out, 0(p_dest)
+
+    // step pointers
+    a         p_src,  p_src,  d_p_src
+    a         p_dest, p_dest, qdc
+
+    // loop inner
+    ai        r, r, -2
+    brnz      r, inner_loop
+
+    // loop outer
+    ai        dc, dc, -4
+    brnz      dc, outer_loop
+
+
+.endfunc
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_InterpolateDDMinusLinear(f32 *data, u32 nc, u32 nr, f32 DD_coeff0)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// {
+//   // 4-tap DD-interpolation coeffs
+//   vf32 p = spu_splats(DD_coeff0);
+//   vf32 q = spu_splats(0.5f - DD_coeff0);
+// 
+//   u32  qstride = nc >> 2;
+//   u32  offset0 = 3*qstride;
+//   u32  offset1 = 3*qstride + 1;
+// 
+//   for (u32 c=0; c<nc; c+=4)
+//   {
+//     vf32 *p_data = (vf32 *)&data[c];
+// 
+//     // initialize input queue
+//     c03 = p_data[0];
+//     c47 = p_data[1];
+//     d03 = p_data[qstride];
+//     d47 = p_data[qstride+1];
+//     e03 = p_data[2*qstride];
+//     e47 = p_data[2*qstride+1];
+//     l03 = spu_shuffle(d03, d47, (vu8)shuf_BDDb);
+// 
+//     for (u32 r=0; r<nr; r+=2)
+//     {
+//       // advance input queue
+//       a03 = c03;
+//       a47 = c47;
+//       b03 = d03;
+//       b47 = d47;
+//       c03 = e03;
+//       c47 = e47;
+//       j03 = l03;
+// 
+//       // even row
+// 
+//       // get 2 qwords of input
+//       d03 = p_data[offset0];
+//       d47 = p_data[offset1];
+// 
+//       // apply vertical kernel
+//       v03 = p*a03 + q*b03 + q*c03 + p*d03;
+//       v47 = p*a47 + q*b47 + q*c47 + p*d47;
+//       v14 = spu_shuffle(v03, v47, (vu8)shuf_BCDa);
+//       v25 = spu_shuffle(v03, v47, (vu8)shuf_CDab);
+//       v36 = spu_shuffle(v03, v47, (vu8)shuf_Dabc);
+// 
+//       // apply horizontal kernel
+//       h03 = p*v03 + q*v14 + q*v25 + p*v36;
+// 
+//       // shuffles for linear interp
+//       //j03 = spu_shuffle(b03, b47, (vu8)shuf_BDDb);
+//       k03 = spu_shuffle(c03, c47, (vu8)shuf_CCaa);
+// 
+//       // subtract linear interpolant
+//       out = h03 - half * (j03+k03);
+// 
+//       // store 1 word of output
+//       p_data[0] = out;
+// 
+//       // step pointer
+//       p_data += qstride;
+// 
+//       // odd row
+// 
+//       // get 2 qwords of input
+//       e03 = p_data[offset0];
+//       e47 = p_data[offset1];
+// 
+//       // apply vertical kernel
+//       v03 = p*b03 + q*c03 + q*d03 + p*e03;
+//       v47 = p*b47 + q*c47 + q*d47 + p*e47;
+//       v14 = spu_shuffle(v03, v47, (vu8)shuf_BCDa);
+//       v25 = spu_shuffle(v03, v47, (vu8)shuf_CDab);
+//       v36 = spu_shuffle(v03, v47, (vu8)shuf_Dabc);
+// 
+//       // apply horizontal kernel
+//       h03 = p*v03 + q*v14 + q*v25 + p*v36;
+// 
+//       // shuffles for linear interp
+//       l03 = spu_shuffle(d03, d47, (vu8)shuf_BDDb);
+// 
+//       // subtract linear interpolant
+//       out = h03 - half * (k03+l03);
+// 
+//       // store 1 word of output
+//       p_data[0] = out;
+// 
+//       // step pointer
+//       p_data += qstride;
+//     }
+//   }
+// }
+
+.cfunc void R2O_InterpolateDDMinusLinear(f32 *data, u32 nc, u32 nr, f32 DD_coeff0)
+
+    .reg      shuf_AAAA, shuf_BDDb, shuf_BCDa, shuf_CDab, shuf_Dabc, shuf_CCaa, p_data, p, q, r, half
+    .reg      qstride, qstride_p1, qstride2, qstride2_p1, qstride3, qstride3_p1, qstride4, qstride4_p1, mqstride, mqstride2
+    .reg      a03, a47, b03, b47, c03, c47, d03, d47, e03, e47, v03, v14, v25, v36, v47, h03, j03, k03, l03, out0, out1
+    .reg      ad03, bc03, pad03, ad47, bc47, pad47, v06, v15, pv06, jk03, be03, cd03, pbe03, be47, cd47, pbe47
+    .reg      v03_, v14_, v25_, v36_, v47_, v06_, v15_, pv06_, h03_, kl03
+ 
+    ila       shuf_AAAA, 0x00010203
+    il128     shuf_BDDb, 0x04050607_0C0D0E0F_0C0D0E0F_14151617
+    il128     shuf_BCDa, 0x04050607_08090A0B_0C0D0E0F_10111213
+    il128     shuf_CDab, 0x08090A0B_0C0D0E0F_10111213_14151617
+    il128     shuf_Dabc, 0x0C0D0E0F_10111213_14151617_18191A1B
+    il128     shuf_CCaa, 0x08090A0B_08090A0B_10111213_10111213
+    ilhu      half, 0x3F00
+
+    // 4-tap DD-interpolation coeffs
+    shufb     p, DD_coeff0, DD_coeff0, shuf_AAAA
+    fs        q, half, p
+
+    shli      qstride, nc, 2
+    ai        qstride_p1, qstride, 16
+    shli      qstride2, qstride, 1
+    ai        qstride2_p1, qstride2, 16
+    a         qstride3, qstride2, qstride
+    ai        qstride3_p1, qstride3, 16
+    shli      qstride4, qstride2, 1
+    ai        qstride4_p1, qstride4, 16
+    sfi       mqstride,  qstride,  0
+    sfi       mqstride2, qstride2, 0
+
+outer_loop:
+
+    mov       p_data, data
+    ai        data, data, 16
+
+    // initialize input queue
+    lqd       c03, 0(p_data)
+    lqd       c47, 16(p_data)
+    lqx       d03, p_data, qstride
+    lqx       d47, p_data, qstride_p1
+    lqx       e03, p_data, qstride2
+    lqx       e47, p_data, qstride2_p1
+    shufb     l03, d03, d47, shuf_BDDb
+
+    mov       r, nr
+
+inner_loop:
+
+    // advance input queue
+    rotqbyi   a03, c03, 0
+    rotqbyi   a47, c47, 0
+    rotqbyi   b03, d03, 0
+    rotqbyi   b47, d47, 0
+    rotqbyi   c03, e03, 0
+    rotqbyi   c47, e47, 0
+    rotqbyi   j03, l03, 0
+
+    // even row
+
+    // get 4 qwords of input
+    lqx       d03, p_data, qstride3
+    lqx       d47, p_data, qstride3_p1
+    lqx       e03, p_data, qstride4
+    lqx       e47, p_data, qstride4_p1
+
+    // step pointer
+    a         p_data, p_data, qstride2
+
+    // apply vertical kernel
+    fa        ad03, a03, d03
+    fa        bc03, b03, c03
+    fm        pad03, p, ad03
+    fma       v03, q, bc03, pad03
+    fa        ad47, a47, d47
+    fa        bc47, b47, c47
+    fm        pad47, p, ad47
+    fma       v47, q, bc47, pad47
+    shufb     v14, v03, v47, shuf_BCDa
+    shufb     v25, v03, v47, shuf_CDab
+    shufb     v36, v03, v47, shuf_Dabc
+
+    // apply horizontal kernel
+    fa        v06, v03, v36
+    fa        v15, v14, v25
+    fm        pv06, p, v06
+    fma       h03, q, v15, pv06
+
+    // shuffle for linear interp
+    shufb     k03, c03, c47, shuf_CCaa
+
+    // subtract linear interpolant
+    fa        jk03, j03, k03
+    fnms      out0, half, jk03, h03
+
+    // odd row
+
+    // apply vertical kernel
+    fa        be03, b03, e03
+    fa        cd03, c03, d03
+    fm        pbe03, p, be03
+    fma       v03_, q, cd03, pbe03
+    fa        be47, b47, e47
+    fa        cd47, c47, d47
+    fm        pbe47, p, be47
+    fma       v47_, q, cd47, pbe47
+    shufb     v14_, v03_, v47_, shuf_BCDa
+    shufb     v25_, v03_, v47_, shuf_CDab
+    shufb     v36_, v03_, v47_, shuf_Dabc
+
+    // apply horizontal kernel
+    fa        v06_, v03_, v36_
+    fa        v15_, v14_, v25_
+    fm        pv06_, p, v06_
+    fma       h03_, q, v15_, pv06_
+
+    // shuffle for linear interp
+    shufb     l03, d03, d47, shuf_BDDb
+
+    // subtract linear interpolant
+    fa        kl03, k03, l03
+    fnms      out1, half, kl03, h03_
+
+    // store 2 qword of output
+    stqx      out0, p_data, mqstride2
+    stqx      out1, p_data, mqstride
+
+    // loop inner
+    ai        r, r, -2
+    brnz      r, inner_loop
+
+    // loop outer
+    ai        nc, nc, -4
+    brnz      nc, outer_loop
+
+.endfunc
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_AddDD(f32 *dest, f32 *src, u32 nc, u32 nr)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// {
+//   u32  qstride = nc >> 2;
+// 
+//   for (u32 c=0; c<nc; c+=4)
+//   {
+//     vf32 *p_source = (vf32 *)&source[c];
+//     vf32 *p_dest   = (vf32 *)&dest[c];
+// 
+//     for (u32 r=0; r<nr; r+=2)
+//     {
+//       // read 1 qword from source array, 2 from dest array
+//       dd   = p_source[0];
+//       out0 = p_dest[0];
+//       out1 = p_dest[qstride];
+// 
+//       // configure dd interpolants
+//       dd0  = spu_sel(dd, zero, mask_F0F0);
+//       dd1  = spu_sel(dd, zero, mask_0F0F);
+// 
+//       // add
+//       out0 += dd0;
+//       out1 += dd1;
+// 
+//       // store back to dest array
+//       p_dest[0]       = out0;
+//       p_dest[qstride] = out1;
+// 
+//       // step pointers
+//       p_source += qstride;
+//       p_dest   += qstride * 2;
+//     }
+//   }
+// }
+
+
+.cfunc void R2O_AddDD(f32 *dest, f32 *src, u32 nc, u32 nr)
+
+    .reg      p_src, p_dest, r, temp0, temp1, dd, dd0, dd1, out0, out1, mask_0F0F, qstride, qstride2, mqstride, mqstride2
+
+    fsmbi     mask_0F0F, 0x0F0F
+    shli      qstride,  nc, 2
+    shli      qstride2, nc, 3
+    sfi       mqstride,  qstride,  0
+    sfi       mqstride2, qstride2, 0
+
+outer_loop:
+
+    mov       p_src,  src
+    mov       p_dest, dest
+
+    ai        src,  src,  16
+    ai        dest, dest, 16
+
+    mov       r, nr
+
+inner_loop:
+
+    // read 1 qword from source array, 2 from dest array
+    lqd       dd,    0(p_src)
+    lqd       temp0, 0(p_dest)
+    lqx       temp1, p_dest, qstride
+
+    // configure dd interpolants
+    and       dd0, dd, mask_0F0F
+    andc      dd1, dd, mask_0F0F
+
+    // add
+    fa        out0, temp0, dd0
+    fa        out1, temp1, dd1
+
+    // step pointers
+    a         p_src,  p_src,  qstride
+    a         p_dest, p_dest, qstride2
+
+    // store back to dest array
+    stqx      out0, p_dest, mqstride2
+    stqx      out1, p_dest, mqstride
+
+    // loop inner
+    ai        r, r, -2
+    brnz      r, inner_loop
+
+    // loop outer
+    ai        nc, nc, -4
+    brnz      nc, outer_loop
+
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_CopyDD(f32 *dest, f32 *src, u32 nc, u32 nr)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// {
+//   u32  qstride = nc >> 2;
+// 
+//   for (u32 c=0; c<nc; c+=4)
+//   {
+//     vf32 *p_source = (vf32 *)&source[c];
+//     vf32 *p_dest   = (vf32 *)&dest[c];
+// 
+//     for (u32 r=0; r<nr; r+=2)
+//     {
+//       // read 1 qword from source array
+//       dd   = p_source[0];
+// 
+//       // configure dd interpolants
+//       dd0  = spu_sel(dd, zero, mask_F0F0);
+//       dd1  = spu_sel(dd, zero, mask_0F0F);
+// 
+//       // store back to dest array
+//       p_dest[0]       = dd0;
+//       p_dest[qstride] = dd1;
+// 
+//       // step pointers
+//       p_source += qstride;
+//       p_dest   += qstride * 2;
+//     }
+//   }
+// }
+
+
+.cfunc void R2O_CopyDD(f32 *dest, f32 *src, u32 nc, u32 nr)
+
+    .reg      p_src, p_dest, r, dd, dd0, dd1, mask_0F0F, qstride, qstride2, mqstride, mqstride2
+
+    fsmbi     mask_0F0F, 0x0F0F
+    shli      qstride,  nc, 2
+    shli      qstride2, nc, 3
+    sfi       mqstride,  qstride,  0
+    sfi       mqstride2, qstride2, 0
+
+outer_loop:
+
+    mov       p_src,  src
+    mov       p_dest, dest
+
+    ai        src,  src,  16
+    ai        dest, dest, 16
+
+    mov       r, nr
+
+inner_loop:
+
+    // read 1 qword from source array
+    lqd       dd,    0(p_src)
+
+    // configure dd interpolants
+    and       dd0, dd, mask_0F0F
+    andc      dd1, dd, mask_0F0F
+
+    // step pointers
+    a         p_src,  p_src,  qstride
+    a         p_dest, p_dest, qstride2
+
+    // store back to dest array
+    stqx      dd0, p_dest, mqstride2
+    stqx      dd1, p_dest, mqstride
+
+    // loop inner
+    ai        r, r, -2
+    brnz      r, inner_loop
+
+    // loop outer
+    ai        nc, nc, -4
+    brnz      nc, outer_loop
+
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_InterpLinear(f32 *dest, f32 *src, u32 nc, u32 nr);
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// {
+//   u32  qstride = nc >> 2;
+// 
+//   vf32 *p_source = (vf32 *)source;
+//   vf32 *p_dest   = (vf32 *)dest;
+// 
+//   for (u32 r=0; r<nr; r+=2)
+//   {
+//     // initialize queue
+//     a47 = p_source[0];
+// 
+//     for (u32 c=0; c<nc; c+=4)
+//     {
+//       // advance queue
+//       a03 = a47;
+// 
+//       // read 2 qwords from source
+//       a47 = p_source[1];
+//       b03 = p_source[qstride];
+// 
+//       // shuffle
+//       a0a2a2a4 = spu_shuffle(a03, a47, (vu8)shuf_ACCa);
+//       b0a0b2a2 = spu_shuffle(a03, b03, (vu8)shuf_aAcC);
+// 
+//       // average
+//       avg = half * (a0a2a2a4 + b0a0b2a2);
+// 
+//       // interleave
+//       out0 = spu_sel(a03, avg, mask_0F0F);
+//       out1 = spu_sel(a03, avg, mask_F0F0);
+// 
+//       // store
+//       p_dest[0]       = out0;
+//       p_dest[qstride] = out1;
+// 
+//       // advance pointers
+//       p_source++;
+//       p_dest++;
+//     }
+// 
+//     p_dest += qstride;
+//   }
+// }
+
+.cfunc void R2O_InterpLinear(f32 *dest, f32 *src, u32 nc, u32 nr)
+
+    .reg      half, shuf_ACCa, shuf_aAcC, mask_0F0F, mask_F0F0
+    .reg      qstride, a03, a47, b03, a0a2a2a4, b0a0b2a2, sum, avg, out0, out1, c
+
+    ilhu      half, 0x3F00
+    il128     shuf_ACCa, 0x00010203_08090A0B_08090A0B_10111213
+    il128     shuf_aAcC, 0x10111213_00010203_18191A1B_08090A0B
+    fsmbi     mask_F0F0, 0xF0F0
+    fsmbi     mask_0F0F, 0x0F0F
+
+    shli      qstride, nc, 2
+
+outer_loop:
+
+    lqd       a47, 0(src)
+    mov       c, nc
+
+inner_loop:
+    
+    // advance queue
+    mov       a03, a47
+    
+    // read 2 qwords from source
+    lqd       a47, 0x10(src)
+    lqx       b03, src, qstride
+
+    // shuffle
+    shufb     a0a2a2a4, a03, a47, shuf_ACCa
+    shufb     b0a0b2a2, a03, b03, shuf_aAcC
+
+    // average
+    fa        sum, a0a2a2a4, b0a0b2a2
+    fm        avg, sum, half
+
+    // interleave
+    selb      out0, a03, avg, mask_0F0F
+    selb      out1, a03, avg, mask_F0F0
+
+    // store
+    stqd      out0, 0(dest)
+    stqx      out1, dest, qstride
+
+    // advance pointers
+    ai        src,  src,  16
+    ai        dest, dest, 16
+
+    // loop inner
+    ai        c, c, -4
+    brnz      c, inner_loop
+
+    // loop outer
+    a         dest, dest, qstride
+    ai        nr, nr, -2
+    brnz      nr, outer_loop
+
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_Geomorph(f32 *dest, f32 *full, f32 *src, u32 nc, u32 nr, vf32 blend0, vf32 dblend_c, vf32 dblend_r, vf32 dblend_y)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// {
+//   u32  qstride = nc >> 2;                                 
+//                                                           
+//   for (u32 c=0; c<nc; c+=4)                               
+//   {                                                       
+//     vf32 *p_src  = (vf32 *)&src[c];                       
+//     vf32 *p_dest = (vf32 *)&dest[c];                      
+//     vf32 *p_full = (vf32 *)&full_morph[c];                
+//                                                           
+//     vf32 grid_blend = blend0;                             
+//                                                           
+//     for (u32 r=0; r<nr; r++)                              
+//     {                                                     
+//       // read 1 qword from source array, 1 from dest array
+//       y  = *p_src;                                        
+//       dy = *p_dest;                                       
+//                                                           
+//       // compute blend factors                            
+//       blend = grid_blend + y * dblend_y;                  
+//                                                           
+//       // clamp blend factors                              
+//       blend_vu32 = spu_convtu(blend, 32);                 
+//       blend = spu_convtf(blend_vu32, 32);                 
+//                                                           
+//       // morph                                            
+//       y_morphed = y + blend * dy;                         
+//       *p_dest   = y_morphed;                              
+//                                                           
+//       // full morph                                       
+//       y_full  = y + dy;                                   
+//       *p_full = y_full;                                   
+//                                                           
+//       // step pointers                                    
+//       p_src  += qstride;                                  
+//       p_dest += qstride;                                  
+//       p_full += qstride;                                  
+//                                                           
+//       // step grid blends                                 
+//       grid_blend += dblend_r;                             
+//     }                                                     
+//                                                           
+//     blend0 += dblend_c;                                  
+//   }                                                       
+// }
+
+
+.cfunc void R2O_Geomorph(f32 *dest, f32 *full, f32 *src, u32 nc, u32 nr, vf32 blend0, vf32 dblend_c, vf32 dblend_r, vf32 dblend_y)
+
+    .reg      qstride, offset_c, offset, grid_blend, r, y, dy, blendf, blendu, blend, y_morphed, y_full
+
+    shli      qstride, nc, 2
+    il        offset_c, 0
+
+    .reg      dest1, full1
+    sf        dest1, qstride, dest
+    sf        full1, qstride, full
+
+outer_loop:
+
+    mov       offset,   offset_c
+    ai        offset_c, offset_c, 16
+
+    mov       grid_blend, blend0
+
+    mov       r, nr
+
+inner_loop:
+
+    // read 1 qword from source array, 1 from dest array
+    lqx       y,  src,  offset
+    lqx       dy, dest, offset
+
+    // step offset
+    a         offset, offset, qstride
+
+    // compute blend factors
+    fma       blendf, y, dblend_y, grid_blend
+
+    // clamp blend factors
+    cfltu     blendu, blendf, 32
+    cuflt     blend,  blendu, 32
+
+    // morph
+    fma       y_morphed, blend, dy, y
+    stqx      y_morphed, dest1, offset
+
+    // full morph
+    fa        y_full, y, dy
+    stqx      y_full, full1, offset
+
+    // step grid blends
+    fa        grid_blend, grid_blend, dblend_r
+
+    // loop inner
+    ai        r, r, -1
+    brnz      r, inner_loop
+
+    fa        blend0, blend0, dblend_c
+    
+    // loop outer
+    ai        nc, nc, -4
+    brnz      nc, outer_loop
+
+
+.endfunc
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_ReplicateAmbient(f32 *dest, u32 dc, u32 dr, f32 *amb, i32 c_amb, i32 r_amb, f32 amplitude)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// {
+//   u32 qdc = dc >> 2;
+//   vf32 *p_amb = (vf32 *)amb;
+//   vf32 amplitude = spu_splats(amplitude);
+// 
+//   // loop over destination columns
+//   for (u32 c=0; c<dc; c+=4)
+//   {
+//     i32 idx_amb = (r_amb*32+c_amb) >> 2;
+// 
+//     vf32 *p_dest    = (vf32 *)&dest[c];
+// 
+//     // loop over destination rows
+//     for (u32 r=0; r<dr; r++)
+//     {
+//       // copy 1 qword, with scaling
+//       *p_dest = p_amb[idx_amb] * amplitude;
+// 
+//       // step pointer and index
+//       p_dest += qdc;
+//       idx_amb = (idx_amb + 8) & 0xFF;
+//     }
+// 
+//     c_amb = (c_amb + 4) & 31;
+//   }
+// 
+// }
+
+
+
+.cfunc void R2O_ReplicateAmbient(f32 *dest, u32 dc, u32 dr, f32 *amb, i32 c_amb, i32 r_amb, f32 amplitude)
+
+    .reg      qdc, shuf_AAAA, r_amb128, c_amb4, ofs, p_dest, r, q, qa, ofs_p128, c_amb4_p16, const_0x0FF0
+
+    ila       shuf_AAAA, 0x00010203
+    shufb     amplitude, amplitude, amplitude, shuf_AAAA
+    il        const_0x0FF0, 0x0FF0
+
+    shli      qdc, dc, 2
+    
+    shli      r_amb128, r_amb, 7
+    shli      c_amb4,   c_amb, 2
+
+outer_loop:
+
+    a         ofs, r_amb128, c_amb4
+
+    mov       p_dest, dest
+    ai        dest, dest, 16
+
+    mov       r, dr
+
+inner_loop:
+
+    // copy 1 qword, with scaling
+    lqx       q, amb, ofs
+    fm        qa, q, amplitude
+    stqd      qa, 0(p_dest)
+
+    // step pointer and index
+    a         p_dest, p_dest, qdc
+    ai        ofs_p128, ofs, 128
+    and       ofs, ofs_p128, const_0x0FF0
+
+     // loop inner
+    ai        r, r, -1
+    brnz      r, inner_loop
+
+    ai        c_amb4_p16, c_amb4, 16
+    andi      c_amb4, c_amb4_p16, 0x70
+
+    // loop outer
+    ai        dc, dc, -4
+    brnz      dc, outer_loop
+
+
+.endfunc
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// u32 R2O_GenerateFans(u16 fans[], u16 indices[], u32 dc, u32 dr, u32 stride)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// {
+//   u32  u0, u1, u2, u3, u4;
+//   vu16 L0, L1, L2, L3, L4;
+//   vu16 R0, R1, R2, R3, R4;
+//   vu8  shufE, shufO;
+//  
+//   vu16 *p_dest = (vu16 *)fans;
+//  
+//   vu16 indices0, indices1, indices2, indices3, indices4;
+//  
+//   vu16 fan0, fan1;
+//   vu16 cmp0, cmp1;
+//   vu16 center;
+//   u32  dest_inc;
+//  
+//   for (u32 r=0; r<dr; r+=4)
+//   {
+//     u0 = (u32)indices + 2*(r+0)*stride;
+//     u1 = (u32)indices + 2*(r+1)*stride;
+//     u2 = (u32)indices + 2*(r+2)*stride;
+//     u3 = (u32)indices + 2*(r+3)*stride;
+//     u4 = (u32)indices + 2*(r+4)*stride;
+//  
+//     for (u32 c=0; c<dc; c+=4)
+//     {
+//       // get 5 rows of indices
+//       L0 = ((vu16 *)u0)[0];
+//       L1 = ((vu16 *)u1)[0];
+//       L2 = ((vu16 *)u2)[0];
+//       L3 = ((vu16 *)u3)[0];
+//       L4 = ((vu16 *)u4)[0];
+//  
+//       R0 = ((vu16 *)u0)[1];
+//       R1 = ((vu16 *)u1)[1];
+//       R2 = ((vu16 *)u2)[1];
+//       R3 = ((vu16 *)u3)[1];
+//       R4 = ((vu16 *)u4)[1];
+//  
+//       shufE = (u0 & 8) ? (vu8)shuf_EFGHabcd : (vu8)shuf_ABCDEFGH;
+//       shufO = (u1 & 8) ? (vu8)shuf_EFGHabcd : (vu8)shuf_ABCDEFGH;
+//  
+//       indices0 = spu_shuffle(L0, R0, shufE);
+//       indices1 = spu_shuffle(L1, R1, shufO);
+//       indices2 = spu_shuffle(L2, R2, shufE);
+//       indices3 = spu_shuffle(L3, R3, shufO);
+//       indices4 = spu_shuffle(L4, R4, shufE);
+//  
+//       u0 += 8;
+//       u1 += 8;
+//       u2 += 8;
+//       u3 += 8;
+//       u4 += 8;
+//  
+//  
+//       /*
+//       
+//       a--b--c--d--e
+//       |\ | /|\ | /|
+//       | \|/ | \|/ |
+//       f--g--h--i--j
+//       | /|\ | /|\ |
+//       |/ | \|/ | \|
+//       k--l--m--n--o
+//       |\ | /|\ | /|
+//       | \|/ | \|/ |
+//       p--q--r--s--t
+//       | /|\ | /|\ |
+//       |/ | \|/ | \|
+//       u--v--w--x--y
+//       
+//       */
+//  
+//       // ------------------------------------------------------------------------
+//       // top left fan
+//       fan0   = spu_shuffle(indices0, indices1, (vu8)shuf_b000aABC);   // g000fabc
+//       fan0   = spu_shuffle(fan0,     indices2, (vu8)shuf_AcbaEFGH);   // gmlkfabc
+//       fan1   = spu_shuffle(indices1, indices2, (vu8)shuf_CcXXXXXX);   // hm111111
+//                                                                             
+//       center = spu_shuffle(indices1, indices1, (vu8)shuf_BBBBBBBB);   // gggggggg
+//                                                                             
+//       cmp0   = spu_cmpeq(fan0, (vu16)mask_FFFF);                      // ????????
+//       cmp1   = spu_cmpeq(fan1, (vu16)mask_F000);                      // ??000000
+//                                                                             
+//       fan0   = spu_sel(fan0, center, cmp0);                           // ????????
+//       fan1   = spu_sel(fan1, center, cmp1);                           // ??111111
+//  
+//       p_dest[0] = fan0;
+//       p_dest[1] = fan1;
+//       
+//       dest_inc = ~spu_extract(cmp0, 0) & 2;
+//       p_dest += dest_inc;
+//       
+//       // ------------------------------------------------------------------------
+//       // top right fan
+//       fan0   = spu_shuffle(indices0, indices1, (vu8)shuf_d0cCDEe0);   // i0hcdej0
+//       fan0   = spu_shuffle(fan0,     indices2, (vu8)shuf_AcCDEFGe);   // imhcdejo
+//       fan1   = spu_shuffle(indices1, indices2, (vu8)shuf_dcXXXXXX);   // nm111111
+//  
+//       center = spu_shuffle(indices1, indices1, (vu8)shuf_DDDDDDDD);   // iiiiiiii
+//  
+//       cmp0   = spu_cmpeq(fan0, (vu16)mask_FFFF);                      // ????????
+//       cmp1   = spu_cmpeq(fan1, (vu16)mask_F000);                      // ??000000
+//  
+//       fan0   = spu_sel(fan0, center, cmp0);                           // ????????
+//       fan1   = spu_sel(fan1, center, cmp1);                           // ??111111
+//  
+//       p_dest[0] = fan0;
+//       p_dest[1] = fan1;
+//       
+//       dest_inc = ~spu_extract(cmp0, 0) & 2;
+//       p_dest += dest_inc;
+//  
+//       // ------------------------------------------------------------------------
+//       // bottom right fan
+//       fan0   = spu_shuffle(indices2, indices3, (vu8)shuf_dCDEe000);   // smnot000
+//       fan0   = spu_shuffle(fan0,     indices4, (vu8)shuf_ABCDEedc);   // smnotyxw
+//       fan1   = spu_shuffle(indices2, indices3, (vu8)shuf_cCXXXXXX);   // rm111111
+//                                                                     
+//       center = spu_shuffle(indices3, indices3, (vu8)shuf_DDDDDDDD);   // ssssssss
+//                                                                             
+//       cmp0   = spu_cmpeq(fan0, (vu16)mask_FFFF);                      // ????????
+//       cmp1   = spu_cmpeq(fan1, (vu16)mask_F000);                      // ??000000
+//                                                                             
+//       fan0   = spu_sel(fan0, center, cmp0);                           // ????????
+//       fan1   = spu_sel(fan1, center, cmp1);                           // ??111111
+//  
+//       p_dest[0] = fan0;
+//       p_dest[1] = fan1;
+//       
+//       dest_inc = ~spu_extract(cmp0, 0) & 2;
+//       p_dest += dest_inc;
+//  
+//       // ------------------------------------------------------------------------
+//       // bottom left fan
+//       fan0   = spu_shuffle(indices2, indices3, (vu8)shuf_bCc000aA);   // qmr000pk
+//       fan0   = spu_shuffle(fan0,     indices4, (vu8)shuf_ABCcbaGH);   // qmrwvupk
+//       fan1   = spu_shuffle(indices2, indices3, (vu8)shuf_BCXXXXXX);   // lm111111
+//                                                                     
+//       center = spu_shuffle(indices3, indices3, (vu8)shuf_BBBBBBBB);   // qqqqqqqq
+//                                                                             
+//       cmp0   = spu_cmpeq(fan0, (vu16)mask_FFFF);                      // ????????
+//       cmp1   = spu_cmpeq(fan1, (vu16)mask_F000);                      // ??000000
+//                                                                             
+//       fan0   = spu_sel(fan0, center, cmp0);                           // ????????
+//       fan1   = spu_sel(fan1, center, cmp1);                           // ??111111
+//  
+//       p_dest[0] = fan0;
+//       p_dest[1] = fan1;
+//       
+//       dest_inc = ~spu_extract(cmp0, 0) & 2;
+//       p_dest += dest_inc;
+//  
+//       // ------------------------------------------------------------------------
+//     }
+//   }
+//  
+//   return (u16 *)p_dest - fans;
+// }
+  
+
+.cfunc u32 R2O_GenerateFans(u16 *fans, u16 *indices, u32 dc, u32 dr, u32 stride)
+
+    .reg      stride2, c, bitE, bitO, maskE, maskO, shufE, shufO, p_dest, blah
+    .reg      u0, u1, u2, u3, u4, L0, L1, L2, L3, L4, R0, R1, R2, R3, R4
+    .reg      indices0, indices1, indices2, indices3, indices4
+    .reg      fan0, fan1, cmp0, cmp1, center, dest_inc, num_indices
+    
+    .reg      shuf_EFGHabcd, shuf_ABCDEFGH, shuf_BBBBBBBB, shuf_DDDDDDDD, mask_FFFF, mask_F000
+    .reg      shuf_b000aABC, shuf_AcbaEFGH, shuf_CcXXXXXX, shuf_d0cCDEe0, shuf_AcCDEFGe, shuf_dcXXXXXX
+    .reg      shuf_dCDEe000, shuf_ABCDEedc, shuf_cCXXXXXX, shuf_bCc000aA, shuf_ABCcbaGH, shuf_BCXXXXXX
+    .reg      shuf_IIIIIIIIiiiiiiii
+
+    .extern   shuf_EFGHabcd, shuf_ABCDEFGH, shuf_BBBBBBBB, shuf_DDDDDDDD
+    .extern   shuf_b000aABC, shuf_AcbaEFGH, shuf_CcXXXXXX, shuf_d0cCDEe0, shuf_AcCDEFGe, shuf_dcXXXXXX
+    .extern   shuf_dCDEe000, shuf_ABCDEedc, shuf_cCXXXXXX, shuf_bCc000aA, shuf_ABCcbaGH, shuf_BCXXXXXX
+
+    lqa       shuf_EFGHabcd, shuf_EFGHabcd
+    lqa       shuf_ABCDEFGH, shuf_ABCDEFGH
+    lqa       shuf_BBBBBBBB, shuf_BBBBBBBB
+    lqa       shuf_DDDDDDDD, shuf_DDDDDDDD
+    lqa       shuf_b000aABC, shuf_b000aABC
+    lqa       shuf_AcbaEFGH, shuf_AcbaEFGH
+    lqa       shuf_CcXXXXXX, shuf_CcXXXXXX
+    lqa       shuf_d0cCDEe0, shuf_d0cCDEe0
+    lqa       shuf_AcCDEFGe, shuf_AcCDEFGe
+    lqa       shuf_dcXXXXXX, shuf_dcXXXXXX
+    lqa       shuf_dCDEe000, shuf_dCDEe000
+    lqa       shuf_ABCDEedc, shuf_ABCDEedc
+    lqa       shuf_cCXXXXXX, shuf_cCXXXXXX
+    lqa       shuf_bCc000aA, shuf_bCc000aA
+    lqa       shuf_ABCcbaGH, shuf_ABCcbaGH
+    lqa       shuf_BCXXXXXX, shuf_BCXXXXXX
+    
+    il128     shuf_IIIIIIIIiiiiiiii, "IIIIIIIIiiiiiiii"
+
+    fsmbi     mask_FFFF, 0xFFFF
+    fsmbi     mask_F000, 0xF000
+
+    ilhu      blah, 0xFFDF
+
+    shli      stride2, stride, 1
+    mov       p_dest, fans
+
+    mov       u0, indices
+    a         u1, u0, stride2
+    
+    andi      bitE, u0, 8
+    andi      bitO, u1, 8
+
+    ceqi      maskE, bitE, 0
+    ceqi      maskO, bitO, 0
+    
+    fsm       maskE, maskE
+    fsm       maskO, maskO
+
+
+outer_loop:
+
+    mov       u0, indices
+    a         u1, u0, stride2
+    a         u2, u1, stride2
+    a         u3, u2, stride2
+    a         u4, u3, stride2
+
+    mov       indices, u4
+
+    mov       c, dc
+
+    selb      shufE, shuf_EFGHabcd, shuf_ABCDEFGH, maskE
+    selb      shufO, shuf_EFGHabcd, shuf_ABCDEFGH, maskO
+    
+inner_loop:
+
+    // get 5 rows of indices
+    lqd       L0, 0(u0)
+    lqd       L1, 0(u1)
+    lqd       L2, 0(u2)
+    lqd       L3, 0(u3)
+    lqd       L4, 0(u4)
+
+    lqd       R0, 16(u0)
+    lqd       R1, 16(u1)
+    lqd       R2, 16(u2)
+    lqd       R3, 16(u3)
+    lqd       R4, 16(u4)
+
+    shufb     indices0, L0, R0, shufE
+    shufb     indices1, L1, R1, shufO
+    shufb     indices2, L2, R2, shufE
+    shufb     indices3, L3, R3, shufO
+    shufb     indices4, L4, R4, shufE
+    
+    xor       shufE, shufE, shuf_IIIIIIIIiiiiiiii
+    xor       shufO, shufO, shuf_IIIIIIIIiiiiiiii
+
+    ai        u0, u0, 8
+    ai        u1, u1, 8
+    ai        u2, u2, 8
+    ai        u3, u3, 8
+    ai        u4, u4, 8
+
+    // --------------------------------------------------------------------
+    // top left fan
+    shufb     fan0,   indices0, indices1, shuf_b000aABC
+    shufb     fan0,   fan0,     indices2, shuf_AcbaEFGH
+    shufb     fan1,   indices1, indices2, shuf_CcXXXXXX
+
+    shufb     center, indices1, indices1, shuf_BBBBBBBB
+
+    ceqh      cmp0, fan0, mask_FFFF
+    ceqh      cmp1, fan1, mask_F000
+
+    selb      fan0, fan0, center, cmp0
+    selb      fan1, fan1, center, cmp1
+
+    stqd      fan0, 0(p_dest)
+    stqd      fan1, 16(p_dest)
+
+    nor       dest_inc, cmp0, blah
+    rotmi     dest_inc, dest_inc, -16
+    a         p_dest, p_dest, dest_inc
+
+    // --------------------------------------------------------------------
+    // top right fan
+    shufb     fan0,   indices0, indices1, shuf_d0cCDEe0
+    shufb     fan0,   fan0,     indices2, shuf_AcCDEFGe
+    shufb     fan1,   indices1, indices2, shuf_dcXXXXXX
+
+    shufb     center, indices1, indices1, shuf_DDDDDDDD
+
+    ceqh      cmp0, fan0, mask_FFFF
+    ceqh      cmp1, fan1, mask_F000
+
+    selb      fan0, fan0, center, cmp0
+    selb      fan1, fan1, center, cmp1
+
+    stqd      fan0, 0(p_dest)
+    stqd      fan1, 16(p_dest)
+
+    nor       dest_inc, cmp0, blah      
+    rotmi     dest_inc, dest_inc, -16
+    a         p_dest, p_dest, dest_inc
+
+    // --------------------------------------------------------------------
+    // bottom right fan
+    shufb     fan0,   indices2,  indices3, shuf_dCDEe000
+    shufb     fan0,   fan0,      indices4, shuf_ABCDEedc
+    shufb     fan1,   indices2,  indices3, shuf_cCXXXXXX
+
+    shufb     center, indices3,  indices3, shuf_DDDDDDDD
+
+    ceqh      cmp0, fan0, mask_FFFF
+    ceqh      cmp1, fan1, mask_F000
+
+    selb      fan0, fan0, center, cmp0
+    selb      fan1, fan1, center, cmp1
+
+    stqd      fan0, 0(p_dest)
+    stqd      fan1, 16(p_dest)
+
+    nor       dest_inc, cmp0, blah
+    rotmi     dest_inc, dest_inc, -16
+    a         p_dest, p_dest, dest_inc
+
+    // --------------------------------------------------------------------
+    // bottom left fan
+    shufb     fan0,   indices2,  indices3, shuf_bCc000aA
+    shufb     fan0,   fan0,      indices4, shuf_ABCcbaGH
+    shufb     fan1,   indices2,  indices3, shuf_BCXXXXXX
+
+    shufb     center, indices3,  indices3, shuf_BBBBBBBB
+
+    ceqh      cmp0, fan0, mask_FFFF
+    ceqh      cmp1, fan1, mask_F000
+
+    selb      fan0, fan0, center, cmp0
+    selb      fan1, fan1, center, cmp1
+
+    stqd      fan0, 0(p_dest)
+    stqd      fan1, 16(p_dest)
+
+    nor       dest_inc, cmp0, blah
+    rotmi     dest_inc, dest_inc, -16
+    a         p_dest, p_dest, dest_inc
+
+    // --------------------------------------------------------------------
+    // loop inner
+    ai        c, c, -4
+    brnz      c, inner_loop
+
+    ai        dr, dr, -4
+    brnz      dr, outer_loop
+
+
+    // return num_indices
+    sf        num_indices, fans, p_dest
+    rotmi     num_indices, num_indices, -1
+
+    mov       @result, num_indices
+
+
+.endfunc
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// u32 R2O_AssignIndices(u16 indices[], u8 outcodes[], u32 cnt)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// vu16 *p_idx8 = (vu16 *)indices;                                                                                   
+// vu8  *p_o16  = (vu8  *)outcodes;                                                                                  
+// vu16 idx_assign = spu_splats((u16)0xFFFF);                                                                        
+//                                                                                                                   
+// vu8  o16, cmp, ones, shifted, acc;                                                                                
+// vu16 acc_lo, acc_hi, cmp_lo, cmp_hi, idx_out;                                                                     
+//                                                                                                                   
+// for (i32 i=0; i<cnt; i+=16)                                                                                       
+// {                                                                                                                 
+//   o16 = p_o16[0];                                                                                                 
+//                                                                                                                   
+//   o16  = spu_and(o16, 0xC0);                                                                                      
+//   cmp  = spu_cmpeq(o16, 0x40);                                  // eg cmp     = (0,F,F,0,0,0,F,0,0,F,F,F,0,F,0,0) 
+//   ones = spu_and(cmp, 0x01);                                    // eg ones    = (0,1,1,0,0,0,1,0,0,1,1,1,0,1,0,0) 
+//                                                                                                                   
+//   shifted = spu_rlmaskqwbyte(ones, -1);                         // eg shifted = (0,0,1,1,0,0,0,1,0,0,1,1,1,0,1,0) 
+//   acc = (vu8)spu_add((vu16)ones, (vu16)shifted);                // eg acc     = (0,1,2,1,0,0,1,1,0,1,2,2,1,1,1,0) 
+//                                                                                                                   
+//   shifted = spu_rlmaskqwbyte(acc, -2);                          // eg shifted = (0,0,0,1,2,1,0,0,1,1,0,1,2,2,1,1) 
+//   acc = (vu8)spu_add((vu16)acc, (vu16)shifted);                 // eg acc     = (0,1,2,2,2,1,1,1,1,2,2,3,3,3,2,1) 
+//                                                                                                                   
+//   shifted = spu_rlmaskqwbyte(acc, -4);                          // eg shifted = (0,0,0,0,0,1,2,2,2,1,1,1,1,2,2,3) 
+//   acc = (vu8)spu_add((vu16)acc, (vu16)shifted);                 // eg acc     = (0,1,2,2,2,2,3,3,3,3,3,4,4,5,4,4) 
+//                                                                                                                   
+//   shifted = spu_rlmaskqwbyte(acc, -8);                          // eg shifted = (0,0,0,0,0,0,0,0,0,1,2,2,2,2,3,3) 
+//   acc = (vu8)spu_add((vu16)acc, (vu16)shifted);                 // eg acc     = (0,1,2,2,2,2,3,3,3,4,5,6,6,7,7,7) 
+//                                                                                                                   
+//                                                                                                                   
+//                                                                                                                   
+//   acc_lo = (vu16)spu_shuffle(acc, acc, (vu8)shuf_0A0B0C0D0E0F0G0H);  // eg acc_lo  = (0,1,2,2,2,2,3,3)            
+//   acc_hi = (vu16)spu_shuffle(acc, acc, (vu8)shuf_0I0J0K0L0M0N0O0P);  // eg acc_hi  = (3,4,5,6,6,7,7,7)            
+//                                                                                                                   
+//   acc_lo  = spu_add(acc_lo, idx_assign);                        // eg acc_lo  = (4,5,6,6,6,6,7,7)                 
+//   acc_hi  = spu_add(acc_hi, idx_assign);                        // eg acc_hi  = (7,8,9,A,A,B,B,B)                 
+//                                                                                                                   
+//   cmp_lo = (vu16)spu_shuffle(cmp, cmp, (vu8)shuf_AABBCCDDEEFFGGHH);  // eg cmp_lo  = (0,F,F,0,0,0,F,0             
+//   cmp_hi = (vu16)spu_shuffle(cmp, cmp, (vu8)shuf_IIJJKKLLMMNNOOPP);  // eg cmp_hi  = (0,F,F,F,0,F,0,0)            
+//                                                                                                                   
+//   idx_out = spu_sel((vu16)mask_FFFF, acc_lo, cmp_lo);           // eg idx_out = (X,5,6,X,X,X,7,X)                 
+//   p_idx8[0] = idx_out;                                                                                            
+//                                                                                                                   
+//   idx_out = spu_sel((vu16)mask_FFFF, acc_hi, cmp_hi);           // eg idx_out = (X,8,9,A,X,B,X,X)                 
+//   p_idx8[1] = idx_out;                                                                                            
+//                                                                                                                   
+//                                                                                                                   
+//                                                                                                                   
+//   idx_assign = spu_shuffle(acc_hi, acc_hi, (vu8)shuf_HHHHHHHH);                                                   
+//                                                                                                                   
+//                                                                                                                   
+//                                                                                                                   
+//   p_o16  += 1;                                                                                                    
+//   p_idx8 += 2;                                                                                                    
+// }                                                                                                                 
+//                                                                                                                   
+// return spu_extract(idx_assign, 0) + 1;                                                                            
+
+
+
+.cfunc u32 R2O_AssignIndices(u16 *indices, u8 *outcodes, u32 cnt)
+
+    .reg      idx_assign, o16, cmp, ones, shifted, acc, acc_lo, acc_hi, cmp_lo, cmp_hi, idx_out, num_indices
+    
+    .reg      shuf_0A0B0C0D0E0F0G0H, shuf_0I0J0K0L0M0N0O0P, shuf_AABBCCDDEEFFGGHH, shuf_IIJJKKLLMMNNOOPP, shuf_HHHHHHHH
+    .extern   shuf_0A0B0C0D0E0F0G0H, shuf_0I0J0K0L0M0N0O0P, shuf_AABBCCDDEEFFGGHH, shuf_IIJJKKLLMMNNOOPP, shuf_HHHHHHHH
+    lqa       shuf_0A0B0C0D0E0F0G0H, shuf_0A0B0C0D0E0F0G0H
+    lqa       shuf_0I0J0K0L0M0N0O0P, shuf_0I0J0K0L0M0N0O0P
+    lqa       shuf_AABBCCDDEEFFGGHH, shuf_AABBCCDDEEFFGGHH
+    lqa       shuf_IIJJKKLLMMNNOOPP, shuf_IIJJKKLLMMNNOOPP
+    lqa       shuf_HHHHHHHH,         shuf_HHHHHHHH
+
+    ilh       idx_assign, 0xFFFF
+
+loop:
+
+    lqd       o16, 0(outcodes)
+    
+    andbi     o16,  o16, 0xC0
+    ceqbi     cmp,  o16, 0x40
+    andbi     ones, cmp, 0x01
+    
+    rotqmbyi  shifted, ones, -1
+    ah        acc, ones, shifted
+
+    rotqmbyi  shifted, acc, -2
+    ah        acc, acc, shifted
+
+    rotqmbyi  shifted, acc, -4
+    ah        acc, acc, shifted
+
+    rotqmbyi  shifted, acc, -8
+    ah        acc, acc, shifted
+
+
+    shufb     acc_lo, acc, acc, shuf_0A0B0C0D0E0F0G0H
+    shufb     acc_hi, acc, acc, shuf_0I0J0K0L0M0N0O0P
+    
+    ah        acc_lo, acc_lo, idx_assign
+    ah        acc_hi, acc_hi, idx_assign
+
+    shufb     cmp_lo, cmp, cmp, shuf_AABBCCDDEEFFGGHH
+    shufb     cmp_hi, cmp, cmp, shuf_IIJJKKLLMMNNOOPP
+
+    orc       idx_out, acc_lo, cmp_lo
+    stqd      idx_out, 0(indices)
+
+    orc       idx_out, acc_hi, cmp_hi
+    stqd      idx_out, 16(indices)
+
+
+    shufb     idx_assign, acc_hi, acc_hi, shuf_HHHHHHHH
+
+
+    ai        outcodes, outcodes, 16
+    ai        indices,  indices,  32
+
+    
+    ai        cnt, cnt, -16
+    brnz      cnt, loop
+    
+    
+    rotmai    num_indices, idx_assign, -16
+    ai        num_indices, num_indices, 1
+    
+    mov       @result, num_indices
+    
+.endfunc
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_FlagVertsRender(u8 outcodes[], i32 nc, i32 nr)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// vu8 *p_o = (vu8 *)outcodes;
+//
+// u32 cnt    = nc*nr;
+// u32 stride = nc>>4;
+//
+// shuf0 = (nc&8) ? (vu8)shuf_IJKLMNOPabcdefgh : (vu8)shuf_ABCDEFGHIJKLMNOP;
+// shuf1 = (nc&8) ? (vu8)shuf_JKLMNOPabcdefghi : (vu8)shuf_BCDEFGHIJKLMNOPa;
+//
+// oTR = p_o[0];
+// oBR = p_o[stride];
+//
+// for (u32 i=0; i<cnt; i+=16)
+// {
+//   oTL = oTR;
+//   oBL = oBR;
+//   oTR = p_o[1];
+//   oBR = p_o[stride+1];
+//
+//   oT1 = spu_shuffle(oTL, oTR, (vu8)shuf_BCDEFGHIJKLMNOPa);
+//
+//   oB0 = spu_shuffle(oBL, oBR, shuf0);
+//   oB1 = spu_shuffle(oBL, oBR, shuf1);
+//
+//   orL = spu_or(oTL, oB0);
+//   or1 = spu_or(oT1, oB1);
+//
+//   o_or = spu_or(orL, or1);
+//
+//   o_out = spu_sel(oTL, o_or, vu8_0x40);
+//
+//   p_o[0] = o_out;
+//   p_o++;
+// }
+
+
+
+.cfunc void R2O_FlagVertsRender(u8 *outcodes, i32 nc, i32 nr)
+
+    .reg      oTL, oTR, oBL, oBR, oT1, oB0, oB1, orL, or1, o_or, o_out, ofs, src0, src1, dest, vu8_0x40, cnt, odd, shuf0, shuf1
+    .reg      shuf_ABCDEFGHIJKLMNOP, shuf_BCDEFGHIJKLMNOPa, shuf_IJKLMNOPabcdefgh, shuf_JKLMNOPabcdefghi
+    
+    // get shuffles
+    .extern   shuf_ABCDEFGHIJKLMNOP, shuf_BCDEFGHIJKLMNOPa, shuf_IJKLMNOPabcdefgh, shuf_JKLMNOPabcdefghi
+    lqa       shuf_ABCDEFGHIJKLMNOP, shuf_ABCDEFGHIJKLMNOP
+    lqa       shuf_BCDEFGHIJKLMNOPa, shuf_BCDEFGHIJKLMNOPa
+    lqa       shuf_IJKLMNOPabcdefgh, shuf_IJKLMNOPabcdefgh
+    lqa       shuf_JKLMNOPabcdefghi, shuf_JKLMNOPabcdefghi
+
+    ilh       vu8_0x40, 0x4040
+    
+    mpy       cnt, nc, nr
+    
+    // even/odd-dependent shuffles
+    andi      odd, nc,  8
+    ceqi      odd, odd, 8
+    fsmb      odd, odd
+    selb      shuf0, shuf_ABCDEFGHIJKLMNOP, shuf_IJKLMNOPabcdefgh, odd
+    selb      shuf1, shuf_BCDEFGHIJKLMNOPa, shuf_JKLMNOPabcdefghi, odd
+    
+    // init queue
+    lqd       oTR, 0(outcodes)
+    lqx       oBR, outcodes, nc
+    
+    // convert loop count to a countdown offset
+    sfi       ofs, cnt, 0
+    a         src0, outcodes, cnt
+    a         src1, src0, nc
+    ai        dest, src0, -16
+
+loop:
+
+    mov       oTL, oTR
+    mov       oBL, oBR
+    ai        ofs, ofs, 16
+    lqx       oTR, src0, ofs
+    lqx       oBR, src1, ofs
+    
+    shufb     oT1, oTL, oTR, shuf_BCDEFGHIJKLMNOPa
+    shufb     oB0, oBL, oBR, shuf0
+    shufb     oB1, oBL, oBR, shuf1
+    
+    or        orL, oTL, oB0
+    or        or1, oT1, oB1
+    
+    or        o_or, orL, or1
+    selb      o_out, oTL, o_or, vu8_0x40
+    stqx      o_out, dest, ofs
+    
+    brnz      ofs, loop
+    
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_FlagVertsKeep(u8 outcodes[], i32 nc, i32 nr)
+// 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// vu8 *p_o = (vu8 *)outcodes;
+// 
+// u32 cnt    = nc*nr;
+// u32 stride = nc>>4;
+// 
+// shuf0 = (nc&8) ? (vu8)shuf_IJKLMNOPabcdefgh : (vu8)shuf_ABCDEFGHIJKLMNOP;
+// shuf1 = (nc&8) ? (vu8)shuf_JKLMNOPabcdefghi : (vu8)shuf_BCDEFGHIJKLMNOPa;
+// 
+// oTR = p_o[0];
+// oBR = p_o[stride];
+// 
+// for (u32 i=0; i<cnt; i+=16)
+// {
+//   oTL = oTR;
+//   oTR = p_o[1];
+//   oBL = oBR;
+//   oBR = p_o[stride+1];
+// 
+//   oT1 = spu_shuffle(oTL, oTR, (vu8)shuf_BCDEFGHIJKLMNOPa);
+// 
+//   oB0 = spu_shuffle(oBL, oBR, shuf0);
+//   oB1 = spu_shuffle(oBL, oBR, shuf1);
+// 
+//   orL = spu_or(oTL, oB0);
+//   or1 = spu_or(oT1, oB1);
+// 
+//   o_or = spu_or(orL, or1);
+// 
+//   or_masked = spu_and(o_or, 0x20);
+//   cmp = spu_cmpeq(or_masked, 0x00);
+// 
+//   cull = spu_and(cmp, 0x80);
+//   o_out = spu_or(oTL, cull);
+// 
+//   p_o[0] = o_out;
+//   p_o++;
+// }
+
+
+
+.cfunc void R2O_FlagVertsKeep(u8 *outcodes, i32 nc, i32 nr)
+
+    .reg      oTL, oTR, oBL, oBR, oT1, oB0, oB1, orL, or1, o_or, o_out, ofs, src0, src1, dest, cnt
+    .reg      vu8_0x40, or_masked, odd, shuf0, shuf1
+    .reg      shuf_ABCDEFGHIJKLMNOP, shuf_BCDEFGHIJKLMNOPa, shuf_IJKLMNOPabcdefgh, shuf_JKLMNOPabcdefghi
+    
+    // get shuffles
+    .extern   shuf_ABCDEFGHIJKLMNOP, shuf_BCDEFGHIJKLMNOPa, shuf_IJKLMNOPabcdefgh, shuf_JKLMNOPabcdefghi
+    lqa       shuf_ABCDEFGHIJKLMNOP, shuf_ABCDEFGHIJKLMNOP
+    lqa       shuf_BCDEFGHIJKLMNOPa, shuf_BCDEFGHIJKLMNOPa
+    lqa       shuf_IJKLMNOPabcdefgh, shuf_IJKLMNOPabcdefgh
+    lqa       shuf_JKLMNOPabcdefghi, shuf_JKLMNOPabcdefghi
+
+    ilh       vu8_0x40, 0x4040
+    
+    mpy       cnt, nc, nr
+    
+    // even/odd-dependent shuffles
+    andi      odd, nc,  8
+    ceqi      odd, odd, 8
+    fsmb      odd, odd
+    selb      shuf0, shuf_ABCDEFGHIJKLMNOP, shuf_IJKLMNOPabcdefgh, odd
+    selb      shuf1, shuf_BCDEFGHIJKLMNOPa, shuf_JKLMNOPabcdefghi, odd
+    
+    // init queue
+    lqd       oTR, 0(outcodes)
+    lqx       oBR, outcodes, nc
+    
+    // convert loop count to a countdown offset
+    sfi       ofs, cnt, 0
+    a         src0, outcodes, cnt
+    a         src1, src0, nc
+    ai        dest, src0, -16
+
+loop:
+
+    rotqbyi   oTL, oTR, 0
+    mov       oBL, oBR
+    ai        ofs, ofs, 16
+    lqx       oTR, src0, ofs
+    lqx       oBR, src1, ofs
+    
+    shufb     oT1, oTL, oTR, shuf_BCDEFGHIJKLMNOPa
+    shufb     oB0, oBL, oBR, shuf0
+    shufb     oB1, oBL, oBR, shuf1
+    
+    or        orL, oTL, oB0
+    or        or1, oT1, oB1
+    
+    or        o_or, orL, or1
+    shli      o_or, o_or, 2
+    
+    orbi      or_masked, o_or, 0x7F
+    orc       o_out, oTL, or_masked
+    stqx      o_out, dest, ofs
+    
+    brnz      ofs, loop
+    
+.endfunc
+
+
+
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_FlagQuadsRenderKeep(u8 outcodes[], i32 nc, i32 nr)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// vu8 *p_o = (vu8 *)outcodes;
+//
+// u32 cnt = nc*nr;
+// u32 stride = nc>>4;
+//
+// shuf0 = (nc&8) ? (vu8)shuf_HIJKLMNOPabcdefg : (vu8)shuf_Pabcdefghijklmno;
+// shuf1 = (nc&8) ? (vu8)shuf_IJKLMNOPabcdefgh : (vu8)shuf_abcdefghijklmnop;
+//
+// oTR = p_o[-stride-1];
+// oBR = p_o[-1];
+//
+// for (u32 i=0; i<cnt; i+=16)
+// {
+//   oTL = oTR;
+//   oBL = oBR;
+//   oTR = p_o[-stride];
+//   oBR = p_o[0];
+//
+//   oT0 = spu_shuffle(oTL, oTR, shuf0);
+//   oT1 = spu_shuffle(oTL, oTR, shuf1);
+//
+//   oB0 = spu_shuffle(oBL, oBR, (vu8)shuf_Pabcdefghijklmno);
+//
+//   and0 = spu_and(oT0, oB0);
+//   andR = spu_and(oT1, oBR);
+//
+//   o_and = spu_and(and0, andR);
+//
+//   and_masked = spu_and(o_and, 0x9F);
+//
+//   cmp = spu_cmpeq(and_masked, 0x01);
+//   bit = spu_and(cmp, 0x40);
+//   o_out = spu_or(oBR, bit);
+//
+//   cmp = spu_cmpeq(and_masked, 0x00);
+//   bit = spu_and(cmp, 0x20);
+//   o_out = spu_or(o_out, bit);
+//
+//   p_o[0] = o_out;
+//   p_o++;
+// }
+
+
+
+
+.cfunc void R2O_FlagQuadsRenderKeep(u8 *outcodes, i32 nc, i32 nr)
+
+    .reg      cnt, neg_stride, neg_stride_m16, odd, shuf0, shuf1, oTL, oTR, oBL, oBR, oT0, oT1, oB0
+    .reg      and0, andR, o_and, and_masked, cmp, o_out, src0, src1, dest, ofs, vu8_0x20, vu8_0x40
+    .reg      shuf_Pabcdefghijklmno, shuf_HIJKLMNOPabcdefg, shuf_abcdefghijklmnop, shuf_IJKLMNOPabcdefgh
+    
+    .extern   shuf_Pabcdefghijklmno, shuf_HIJKLMNOPabcdefg, shuf_abcdefghijklmnop, shuf_IJKLMNOPabcdefgh
+    lqa       shuf_Pabcdefghijklmno, shuf_Pabcdefghijklmno
+    lqa       shuf_HIJKLMNOPabcdefg, shuf_HIJKLMNOPabcdefg
+    lqa       shuf_abcdefghijklmnop, shuf_abcdefghijklmnop
+    lqa       shuf_IJKLMNOPabcdefgh, shuf_IJKLMNOPabcdefgh
+
+    ilh       vu8_0x20, 0x2020
+    ilh       vu8_0x40, 0x4040
+
+    mpy       cnt, nc, nr
+    sfi       neg_stride, nc, 8
+    
+    andi      odd, nc,  8
+    ceqi      odd, odd, 8
+    fsmb      odd, odd
+
+    selb      shuf0, shuf_Pabcdefghijklmno, shuf_HIJKLMNOPabcdefg, odd
+    selb      shuf1, shuf_abcdefghijklmnop, shuf_IJKLMNOPabcdefgh, odd
+    
+    ai        neg_stride_m16, neg_stride, -16
+    lqx       oTR, outcodes, neg_stride_m16
+    lqd       oBR, -16(outcodes)
+
+    // convert count to a countdown offset
+    sfi       ofs, cnt, 0
+    a         src1, outcodes, cnt
+    a         src0, src1, neg_stride
+    ai        dest, src1, -16
+
+loop:
+
+    rotqbyi   oTL, oTR, 0
+    rotqbyi   oBL, oBR, 0
+    lqx       oTR, src0, ofs
+    lqx       oBR, src1, ofs
+ 
+    shufb     oT0, oTL, oTR, shuf0
+    shufb     oT1, oTL, oTR, shuf1
+ 
+    shufb     oB0, oBL, oBR, shuf_Pabcdefghijklmno
+ 
+    and       and0, oT0, oB0
+    and       andR, oT1, oBR
+ 
+    and       o_and, and0, andR
+ 
+    andbi     and_masked, o_and, 0x9F
+ 
+    ceqbi     cmp, and_masked, 0x01
+    selb      o_out, oBR, cmp, vu8_0x40
+ 
+    ceqbi     cmp, and_masked, 0x00
+    selb      o_out, o_out, cmp, vu8_0x20
+ 
+    ai        ofs, ofs, 16
+    stqx      o_out, dest, ofs
+    
+    brnz      ofs, loop
+    
+.endfunc
+
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_GenerateVertexDerivs(i16 *dest, f32 *src, vf32 basis_col_x, vf32 basis_col_z,
+//                               vf32 basis_row_x, vf32 basis_row_z, u32 nc, u32 nr)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// {
+//   u32 qstride = nc >> 2;
+// 
+//   for (i32 c=0; c<nc; c+=4)
+//   {
+//     vi16 *p_dest    = (vi16 *)&dest[c<<1];
+//     vf32 *p_src     = (vf32 *)&src[c];
+// 
+//     // initialize queue
+//     c03 = p_src[0];
+// 
+//     // loop over destination rows
+//     for (i32 r=0; r<nr; r++)
+//     {
+//       // advance queue
+//       a03 = b03;
+//       b03 = c03;
+// 
+//       // load 3 qwords
+//       bCF = p_src[-1];
+//       b47 = p_src[1];
+//       c03 = p_src[qstride];
+// 
+//       // shifts
+//       bF2 = spu_shuffle(bCF, b03, (vu8)shuf_Dabc);
+//       b14 = spu_shuffle(b03, b47, (vu8)shuf_BCDa);
+// 
+//       // form differences
+//       diff_x = b14-bF2;
+//       diff_z = c03-a03;
+// 
+//       // compute derivs
+//       dy_dx = (diff_x * basis_col_x) + (diff_z * basis_row_x);
+//       dy_dz = (diff_x * basis_col_z) + (diff_z * basis_row_z);
+// 
+//       // convert to i16
+//       dy_dx_int = spu_convts(dy_dx, 0);
+//       dy_dz_int = spu_convts(dy_dz, 0);
+// 
+//       // interleave
+//       out = spu_shuffle(*(vi16 *)&dy_dx_int, *(vi16 *)&dy_dz_int, (vu8)shuf_AaCcEeGg);
+// 
+//       // store
+//       *p_dest = out;
+// 
+//       // step pointers
+//       p_src  += qstride;
+//       p_dest += qstride;
+//     }
+//   }
+// }
+
+
+.cfunc void R2O_GenerateVertexDerivs(i16 *dest, f32 *src, vf32 basis_col_x, vf32 basis_col_z, vf32 basis_row_x, vf32 basis_row_z, u32 nc, u32 nr)
+
+    .reg      shuf_Dabc, shuf_BCDa, shuf_AaCcEeGg, shuf_A0a0E0e0I0i0M0m0, shuf_Aa00Ee00Ii00Mm00
+    .reg      stride, p_dest, p_src, out, r
+    .reg      a03, bCF, bF2, b03, b14, b47, c03
+    .reg      diff_x, diff_z, prod_x, prod_z, dy_dx, dy_dz, dy_dx_int, dy_dz_int
+    .reg      bias
+    
+    .extern   shuf_Dabc, shuf_BCDa, shuf_AaCcEeGg, shuf_A0a0E0e0I0i0M0m0, shuf_Aa00Ee00Ii00Mm00
+    lqa       shuf_Dabc, shuf_Dabc
+    lqa       shuf_BCDa, shuf_BCDa
+    lqa       shuf_AaCcEeGg, shuf_AaCcEeGg
+    lqa       shuf_A0a0E0e0I0i0M0m0, shuf_A0a0E0e0I0i0M0m0
+    lqa       shuf_Aa00Ee00Ii00Mm00, shuf_Aa00Ee00Ii00Mm00
+
+    ilhu      bias, 0x3F80
+
+    shli      stride, nc, 2
+
+outer_loop:
+
+    mov       p_dest, dest
+    mov       p_src,  src
+    
+    ai        dest, dest, 16
+    ai        src,  src,  16
+
+    // initialize queue
+    lqd       c03, 0(p_src)
+
+    mov       r, nr
+
+inner_loop:
+
+    // advance queue
+    rotqbyi   a03, b03, 0
+    rotqbyi   b03, c03, 0
+    
+    // load 3 qwords
+    lqd       bCF, -16(p_src)
+    lqd       b47, 16(p_src)
+    lqx       c03, p_src, stride
+    
+    // shifts
+    shufb     bF2, bCF, b03, shuf_Dabc
+    shufb     b14, b03, b47, shuf_BCDa
+    
+    // form differences
+    fs        diff_x, b14, bF2
+    fs        diff_z, c03, a03
+    
+    // compute derivs
+    fm        prod_x, diff_x, basis_col_x
+    fm        prod_z, diff_x, basis_col_z
+    fma       dy_dx,  diff_z, basis_row_x, prod_x
+    fma       dy_dz,  diff_z, basis_row_z, prod_z
+
+    // bias
+    fa        dy_dx, dy_dx, bias
+    fa        dy_dz, dy_dz, bias
+
+    // convert to u32
+    cfltu     dy_dx_int, dy_dx, 31
+    cfltu     dy_dz_int, dy_dz, 31
+    
+    // interleave
+    shufb     out, dy_dx_int, dy_dz_int, shuf_Aa00Ee00Ii00Mm00
+
+    // store
+    stqd      out, 0(p_dest)
+
+    // step pointers
+    a         p_src,  p_src,  stride
+    a         p_dest, p_dest, stride
+
+    // loop inner
+    ai        r, r, -1
+    brnz      r, inner_loop
+    
+    // loop outer
+    ai        nc, nc, -4
+    brnz      nc, outer_loop
+
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_GenerateMapDerivs(i8 *dest, f32 *src, i32 cols, i32 rows, u32 src_stride, u32 dest_stride, u32 wrap, f32 scale)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// u32 src_qstride  = src_stride >>2;
+// u32 dest_qstride = dest_stride>>2;
+//
+// // loop over source cols
+// for (i32 c=0; c<cols; c+=8)
+// {
+//   // set pointers
+//   p_dest = (vi8  *)&derivs[c<<1];
+//   p_src0 = (vf32 *)&heights[c];
+//   p_src1 = p_src0 + 1;
+//   p_srcN = p_src0 + (wrap && (cols-c == cols) ? src_qstride :  0) - 1;
+//   p_src2 = p_src0 - (wrap && (cols-c == 8   ) ? src_qstride :  0) + 2;
+//   idx_src = 0;
+// 
+//   // initialize queue
+//   b47 = p_src0[idx_src - src_qstride];
+//   b8B = p_src1[idx_src - src_qstride];
+//   c47 = p_src0[idx_src];
+//   c8B = p_src1[idx_src];
+// 
+//   // loop over source rows
+//   for (i32 r=0; r<rows; r++)
+//   {
+//     // advance queue
+//     a47 = b47;
+//     a8B = b8B;
+//     b47 = c47;
+//     b8B = c8B;
+// 
+//     // load 2 qwords from current line
+//     b03 = p_srcN[idx_src];
+//     bCF = p_src2[idx_src];
+// 
+//     // step source index
+//     idx_src+ = src_qstride;
+// 
+//     // load 2 qwords from next line
+//     c47 = p_src0[idx_src];
+//     c8B = p_src1[idx_src];
+// 
+//     // shuffles
+//     b36 = (vf32)si_shufb((qword)b03, (qword)b47, shuf_Dabc);
+//     b7A = (vf32)si_shufb((qword)b47, (qword)b8B, shuf_Dabc);
+//     b58 = (vf32)si_shufb((qword)b47, (qword)b8B, shuf_BCDa);
+//     b9C = (vf32)si_shufb((qword)b8B, (qword)bCF, shuf_BCDa);
+// 
+//     // diffs
+//     dy_dx_L = b58 - b36;
+//     dy_dx_R = b9C - b7A;
+//     dy_dz_L = c47 - a47;
+//     dy_dz_R = c8B - a8B;
+// 
+//     // x-derivs
+//     dy_dx_L_int = (vi32)si_cflts((qword)dy_dx_L, 0);
+//     dy_dx_R_int = (vi32)si_cflts((qword)dy_dx_R, 0);
+// 
+//     // z-derivs
+//     dy_dz_L_int = (vi32)si_cflts((qword)dy_dz_L, 0);
+//     dy_dz_R_int = (vi32)si_cflts((qword)dy_dz_R, 0);
+// 
+//     // interleave
+//     dy_dx   = (vi16)si_shufb((qword)dy_dx_L_int, (qword)dy_dx_R_int, shuf_ACEGaceg);
+//     dy_dz   = (vi16)si_shufb((qword)dy_dz_L_int, (qword)dy_dz_R_int, shuf_ACEGaceg);
+//     results = (vi8 )si_shufb((qword)dy_dx,       (qword)dy_dz,       shuf_AaCcEeGgIiKkMmOo);
+// 
+//     // store results
+//     *p_dest = results;
+// 
+//     // step dest pointer
+//     p_dest += dest_qstride;
+//   }
+// }
+
+.cfunc void R2O_GenerateMapDerivs(i8 *dest, f32 *src, i32 cols, i32 rows, u32 src_stride, u32 dest_stride, u32 wrap, f32 scale)
+
+    .reg      c, r, p_dest, p_srcN, p_src0, p_src1, p_src2, cmpN, cmp2, ofsN, ofs0, ofs2, ofs_src
+    .reg      a47, a8B, b03, b36, b47, b58, b7A, b8B, bCF, c47, c8B, b9C
+    .reg      shuf_Dabc, shuf_BCDa, shuf_ACEGaceg, shuf_AaCcEeGgIiKkMmOo, shuf_AAAA
+    
+    .extern   shuf_Dabc, shuf_BCDa, shuf_ACEGaceg, shuf_AaCcEeGgIiKkMmOo
+    
+    lqa       shuf_Dabc, shuf_Dabc
+    lqa       shuf_BCDa, shuf_BCDa
+    lqa       shuf_ACEGaceg, shuf_ACEGaceg
+    lqa       shuf_AaCcEeGgIiKkMmOo, shuf_AaCcEeGgIiKkMmOo
+    ila       shuf_AAAA, 0x00010203 
+    
+    
+    
+    .reg      dy_dx_L, dy_dz_L, dy_dx_R, dy_dz_R, dy_dx, dy_dz, results
+    .reg      dy_dx_L_int, dy_dx_R_int, dy_dz_L_int, dy_dz_R_int
+
+
+    shufb     scale, scale, scale, shuf_AAAA    
+    shli      src_stride,  src_stride,  2
+    
+    clgti     wrap, wrap, 0
+    and       wrap, wrap, src_stride
+
+    mov       c, cols
+
+outer_loop:
+
+    // set pointers
+    mov       p_dest, dest
+    
+    mov       p_src0, src
+    ai        p_src1, src, 16
+    
+    ceq       cmpN, c, cols
+    and       ofsN, cmpN, wrap
+    ai        ofsN, ofsN, -16
+    a         p_srcN, src, ofsN
+    
+    ceqi      cmp2, c, 8
+    and       ofs2, cmp2, wrap
+    sfi       ofs2, ofs2, 32
+    a         p_src2, src, ofs2
+    
+    il        ofs_src, 0
+    
+ 
+    // initialize queue
+    sf        ofs0, src_stride, ofs_src
+    lqx       b47, p_src0, ofs0
+    lqx       b8B, p_src1, ofs0
+    lqx       c47, p_src0, ofs_src
+    lqx       c8B, p_src1, ofs_src
+    
+    
+    
+    ai        dest, dest, 16
+    ai        src,  src,  32
+    
+ 
+
+    mov       r, rows
+
+inner_loop:
+
+    // advance queue
+    rotqbyi   a47, b47, 0
+    rotqbyi   a8B, b8B, 0
+    rotqbyi   b47, c47, 0
+    rotqbyi   b8B, c8B, 0
+
+    // load 2 qwords from current line
+    lqx       b03, p_srcN, ofs_src
+    lqx       bCF, p_src2, ofs_src
+
+    // step source offset
+    a         ofs_src, ofs_src, src_stride
+
+    // load 2 qwords from next line
+    lqx       c47, p_src0, ofs_src
+    lqx       c8B, p_src1, ofs_src
+
+    // shuffles
+    shufb     b36, b03, b47, shuf_Dabc
+    shufb     b7A, b47, b8B, shuf_Dabc
+    shufb     b58, b47, b8B, shuf_BCDa
+    shufb     b9C, b8B, bCF, shuf_BCDa
+
+    // diffs
+    fs        dy_dx_L, b58, b36
+    fs        dy_dx_R, b9C, b7A
+    fs        dy_dz_L, c47, a47
+    fs        dy_dz_R, c8B, a8B
+    
+    // derivs
+    fm        dy_dx_L, dy_dx_L, scale
+    fm        dy_dx_R, dy_dx_R, scale 
+    fm        dy_dz_L, dy_dz_L, scale       
+    fm        dy_dz_R, dy_dz_R, scale       
+
+    // x-derivs
+    cflts     dy_dx_L_int, dy_dx_L, 24
+    cflts     dy_dx_R_int, dy_dx_R, 24
+
+    // z-derivs
+    cflts     dy_dz_L_int, dy_dz_L, 24
+    cflts     dy_dz_R_int, dy_dz_R, 24
+
+    // interleave
+    shufb     dy_dx,   dy_dx_L_int, dy_dx_R_int, shuf_ACEGaceg
+    shufb     dy_dz,   dy_dz_L_int, dy_dz_R_int, shuf_ACEGaceg
+    shufb     results, dy_dx,       dy_dz,       shuf_AaCcEeGgIiKkMmOo
+
+    // store results
+    stqd      results, 0(p_dest)
+
+    // step dest pointer
+    a         p_dest, p_dest, dest_stride
+    
+    // loop inner
+    ai        r, r, -1
+    brnz      r, inner_loop
+
+    // loop outer
+    ai        c, c, -8
+    brnz      c, outer_loop
+
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//void CompressDerivsForOutputAsm(i16 *dest, i16 *src, u16 *indices, u32 cnt)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// outputs a derivative pair for every gridpoint whose index is not -1
+//
+// {
+//   u32 *p_derivs_out = (u32 *)derivs_out;
+//   u32 *p_derivs_raw = (u32 *)derivs_raw;
+//   u16 *p_idx = indices;
+// 
+//   for ( ; cnt; cnt--)
+//   {
+//     if (*p_idx++ != 0xFFFF)
+//     {
+//       *p_derivs_out++ = *p_derivs_raw;
+//     }
+//     p_derivs_raw++;
+//   }
+// }
+
+
+.cfunc void CompressDerivsForOutputAsm(i16 *dest, i16 *src, u16 *indices, u32 cnt)
+
+    .reg      shuf_table, derivs, idx8, cmp, mask, mask0, mask1, shuf, packed, lo4, shuf_AAAA
+    .reg      shiftL, shiftR, left, right, acc, bit_cnt, const_4, step, thresh, idx_ofs
+    
+    .extern   shuf_0000, shuf_AAAA
+    ila       shuf_table,  shuf_0000
+    lqa       shuf_AAAA,   shuf_AAAA
+    il        const_4, 4
+
+
+    // zero the accumulator
+    il        acc, 0
+    
+    // convert the count to a count-down offset
+    sfi       idx_ofs, cnt, 0
+    a         idx_ofs, idx_ofs, idx_ofs
+    
+    // adjust indices pointer accordingly
+    sf        indices, idx_ofs, indices
+  
+loop:
+
+    // get 8 indices
+    lqx       idx8, indices, idx_ofs
+    
+    // generate mask
+    cgthi     cmp, idx8, -1
+    gbh       mask, cmp                                 // eg mask = 0b10110110
+    
+    
+    
+    // get first 4 bits (this isn't needed for the table lookup; only for the bit-count)
+    andi      mask0, mask, 0xF0
+    
+    // load qword of derivs
+    lqd       derivs, 0(src)
+    
+    // look up shuffle (ignores low 4 bits of mask)
+    lqx       shuf, shuf_table, mask                    // eg shuf = shuf_ACD0
+    
+    // pack derivs
+    shufb     packed, derivs, derivs, shuf              // eg derivs = (x0,z0,x2,z2,x3,z3,0,0)
+    
+    // shift to align with current output
+    andi      lo4, dest, 15                             // eg lo4 = 12
+    sfi       shiftL, lo4, 0                            // eg shiftL = -12
+    sfi       shiftR, lo4, 16                           // eg shiftR = 4
+    rotqmby   left,  packed, shiftL                     // eg left  = ( 0, 0, 0, 0, 0, 0,x0,z0)
+    shlqby    right, packed, shiftR                     // eg right = (x2,z2,x3,z3, 0, 0, 0, 0)
+        
+    // accumulate and store
+    or        acc, acc, left                            // eg acc   = (xp,zp,xq,zq,xr,zr,x0,z0)
+    stqd      acc, 0(dest)
+  
+    // step output pointer by number of bytes output
+    cntb      bit_cnt, mask0                            // eg bit_cnt = 3
+    ori       thresh, dest, 15
+    mpya      dest, bit_cnt, const_4, dest
+    shufb     dest, dest, dest, shuf_AAAA
+  
+    // conditionally switch to right-hand qword
+    clgt      step, dest, thresh
+    selb      acc, acc, right, step
+  
+  
+  
+  
+    // get second 4 bits
+    shli      mask1, mask, 4
+    andi      mask1, mask1, 0xF0
+
+    // load qword of derivs
+    lqd       derivs, 16(src)
+    
+    // look up shuffle
+    lqx       shuf, shuf_table, mask1                   // eg shuf = shuf_ACD0
+    
+    // pack derivs
+    shufb     packed, derivs, derivs, shuf              // eg derivs = (x0,z0,x2,z2,x3,z3,0,0)
+    
+    // shift to align with current output
+    andi      lo4, dest, 15                             // eg lo4 = 12
+    sfi       shiftL, lo4, 0                            // eg shiftL = -12
+    sfi       shiftR, lo4, 16                           // eg shiftR = 4
+    rotqmby   left,  packed, shiftL                     // eg left  = ( 0, 0, 0, 0, 0, 0,x0,z0)
+    shlqby    right, packed, shiftR                     // eg right = (x2,z2,x3,z3, 0, 0, 0, 0)
+        
+    // accumulate and store
+    or        acc, acc, left                            // eg acc   = (xp,zp,xq,zq,xr,zr,x0,z0)
+    stqd      acc, 0(dest)
+  
+    // step output pointer by number of bytes output
+    cntb      bit_cnt, mask1                            // eg bit_cnt = 3
+    ori       thresh, dest, 15
+    mpya      dest, bit_cnt, const_4, dest
+    shufb     dest, dest, dest, shuf_AAAA
+  
+    // conditionally switch to right-hand qword
+    clgt      step, dest, thresh
+    selb      acc, acc, right, step
+  
+  
+    // step pointers
+    ai        src, src, 32
+    ai        idx_ofs, idx_ofs, 16
+    
+    // loop
+    //ai        cnt, cnt, -8
+    brnz      idx_ofs, loop
+
+
+    // store final acc
+    stqd      acc,   0(dest)
+    
+    
+.endfunc    
+    
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void CompressVertsForOutputAsm(u8 *dest, f32 *src, f32 scale, u16 *indices, i32 cols, i32 rows)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Outputs a vertex position for every gridpoint whose index is not -1.
+// The source array contains only the heightmap info;
+// the output format is (col, row, height), using (1,1,2) bytes respectively.
+//
+// {
+//   u8 *p_vert_out = verts_out;
+//   f32 *p_height = heights;
+//   u16 *p_idx = indices;
+// 
+//   for (i32 r=0; r<rows; r++)
+//   {
+//     for (i32 c=0; c<cols; c++)
+//     {
+//       if (*p_idx++ != 0xFFFF)
+//       {
+//         p_vert_out[0] = c;
+//         p_vert_out[1] = r;
+//         ((u16 *)p_vert_out)[1] = (u16)(*p_height*scale+32768.0f);
+//         p_vert_out += 4;
+//       }
+//       p_height++;
+//     }
+//   }
+// }
+
+.cfunc void CompressVertsForOutputAsm(u8 *dest, f32 *src, f32 scale, u16 *indices, i32 cols, i32 rows)
+
+    .reg      shuf_table, heights, idx8, cmp, mask, mask0, mask1, shuf, packed, lo4, shuf_AAAA
+    .reg      shiftL, shiftR, left, right, acc, bit_cnt, const_4, step, thresh, shuf_DCcdHGghLKklPOop
+    .reg      bias, cnt, row_col, last_col, skip, col, inc_mask, inc, coords, idx_ofs
+    
+    .extern   shuf_0000, shuf_AAAA, shuf_DCcdHGghLKklPOop
+    ila       shuf_table,  shuf_0000
+    lqa       shuf_AAAA,   shuf_AAAA
+    lqa       shuf_DCcdHGghLKklPOop, shuf_DCcdHGghLKklPOop
+    il        const_4, 4
+
+
+    // zero the accumulator
+    il        acc, 0
+    
+    // bias of 32768 for heights
+    ilhu      bias,  0x4700   // 2^15
+
+    // broadcast the scale
+    shufb     scale, scale, scale, shuf_AAAA
+    
+    // set the count and row/col vars
+    mpy       cnt, rows, cols
+    il128     row_col, 0x00000000_00000001_00000002_00000003    // (0,1,2,3)
+    shufb     cols, cols, cols, shuf_AAAA                       // eg (64, 64, 64, 64)
+    ai        last_col, cols, -4                                // eg (60, 60, 60, 60)
+    sfi       skip, last_col, 256                               // eg (196, 196, 196, 196)
+    a         last_col, last_col, row_col                       // eg (60, 61, 63, 63)
+    
+    // convert the count to a count-down offset
+    sfi       idx_ofs, cnt, 0
+    a         idx_ofs, idx_ofs, idx_ofs
+    
+    // adjust indices pointer accordingly
+    sf        indices, idx_ofs, indices
+    
+loop:
+
+    // get 8 indices
+    lqx       idx8, indices, idx_ofs
+    
+    // generate mask
+    cgthi     cmp, idx8, -1
+    gbh       mask, cmp
+    
+    
+    
+    // get first 4 bits (this isn't needed for the table lookup; only for the bit-count)
+    andi      mask0, mask, 0xF0
+    
+    // load qword of heights and pack in with column and row bytes
+    lqd       heights, 0(src)
+    fma       heights, heights, scale, bias
+    cflts     heights, heights, 0
+    shufb     coords, row_col, heights, shuf_DCcdHGghLKklPOop
+    
+    // look up shuffle (ignores low 4 bits of mask)
+    lqx       shuf, shuf_table, mask
+    
+    // pack coords
+    shufb     packed, coords, coords, shuf
+    
+    // shift to align with current output
+    andi      lo4, dest, 15
+    sfi       shiftL, lo4, 0
+    sfi       shiftR, lo4, 16
+    rotqmby   left,  packed, shiftL
+    shlqby    right, packed, shiftR
+        
+    // accumulate and store
+    or        acc, acc, left
+    stqd      acc, 0(dest)
+  
+    // step output pointer by number of bytes output
+    cntb      bit_cnt, mask0
+    ori       thresh, dest, 15
+    mpya      dest, bit_cnt, const_4, dest
+    shufb     dest, dest, dest, shuf_AAAA
+  
+    // conditionally switch to right-hand qword
+    clgt      step, dest, thresh
+    selb      acc, acc, right, step
+  
+  
+  
+    // step col
+    ai        row_col, row_col, 4
+  
+  
+    // get second 4 bits
+    shli      mask1, mask, 4
+    andi      mask1, mask1, 0xF0
+
+    // load qword of heights and pack in with column and row bytes
+    lqd       heights, 16(src)
+    fma       heights, heights, scale, bias
+    cflts     heights, heights, 0
+    shufb     coords, row_col, heights, shuf_DCcdHGghLKklPOop
+    
+    // look up shuffle
+    lqx       shuf, shuf_table, mask1
+    
+    // pack coords
+    shufb     packed, coords, coords, shuf
+    
+    // shift to align with current output
+    andi      lo4, dest, 15
+    sfi       shiftL, lo4, 0
+    sfi       shiftR, lo4, 16
+    rotqmby   left,  packed, shiftL
+    shlqby    right, packed, shiftR
+        
+    // accumulate and store
+    or        acc, acc, left
+    stqd      acc, 0(dest)
+  
+    // step output pointer by number of bytes output
+    cntb      bit_cnt, mask1
+    ori       thresh, dest, 15
+    mpya      dest, bit_cnt, const_4, dest
+    shufb     dest, dest, dest, shuf_AAAA
+  
+    // conditionally switch to right-hand qword
+    clgt      step, dest, thresh
+    selb      acc, acc, right, step
+  
+  
+  
+    // step row/col pair
+    andi      col, row_col, 0xFF
+    ceq       inc_mask, col, last_col
+    selb      inc, const_4, skip, inc_mask
+    a         row_col, row_col, inc
+    
+  
+  
+    // step pointers
+    ai        src, src, 32
+    ai        idx_ofs, idx_ofs, 16
+    
+    // loop
+    //ai        cnt, cnt, -8
+    brnz      idx_ofs, loop
+
+
+    // store final acc
+    stqd      acc,   0(dest)
+    
+    
+    
+.endfunc
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void InterpolateOutcodesHorizontalAsm(u8 outcodes[], u32 nc, u32 nr)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// #define INTERP_O(O0,O1)  ( ( ((O0) | (O1)) & 0x80 ) | ( ((O0) & (O1)) & 0x1 ) << 7 )
+//
+// {
+//   for (i32 r=0; r<nr; r+=2)
+//   {
+//     for (i32 c=1; c<nc; c+=2)
+//     {
+//       i32 i = r*nc + c;
+//       i32 i0 = i-1;
+//       i32 i1 = i+1;
+//       outcodes[i] = INTERP_O(outcodes[i0], outcodes[i1]);
+//     }
+//   }
+// }
+
+
+.cfunc void InterpolateOutcodesHorizontalAsm(u8 *outcodes, u32 nc, u32 nr)
+
+    .reg      stride, src, dest, c, r, o0, oR, o1, oo, oa, o, shuf, test, ofs0, ofsR, ofs0_next, nc_and8
+    .reg      shuf_BCDEFGHa, shuf_AaCcEeGgIiKkMmOo, shuf_AaCcEeGgIJKLMNOP
+    
+    .extern   shuf_BCDEFGHa, shuf_AaCcEeGgIiKkMmOo, shuf_AaCcEeGgIJKLMNOP
+    lqa       shuf_BCDEFGHa, shuf_BCDEFGHa
+    lqa       shuf_AaCcEeGgIiKkMmOo, shuf_AaCcEeGgIiKkMmOo
+    lqa       shuf_AaCcEeGgIJKLMNOP, shuf_AaCcEeGgIJKLMNOP
+
+
+    // stride is 2 rows
+    a         stride, nc, nc
+    
+    // init vars based on nc&8
+    andi      nc_and8, nc, 8
+    ceqi      test, nc_and8, 8
+    fsmb      test, test
+
+    // ofs0 = (nc&8) ? nc-8 : 0
+    ai        ofs0, nc, -8
+    and       ofs0, ofs0, test
+    
+    // ofs0_next = (nc&8) ? -16 : 0
+    andi      ofs0_next, test, -16
+    
+    // shuf = (nc&8) ? shuf_AaCcEeGgIJKLMNOP : shuf_AaCcEeGgIiKkMmOo
+    selb      shuf, shuf_AaCcEeGgIiKkMmOo, shuf_AaCcEeGgIJKLMNOP, test
+    
+    // c = (nc&8) ? nc+8 : nc
+    a         c, nc, nc_and8
+    
+    // loop over cols
+
+outer_loop:
+
+    // set pointers for this column
+    mov       src,   outcodes
+    
+    // ofsR = ofs0 + 16
+    ai        ofsR, ofs0, 16
+    
+    // loop over rows
+    mov       r, nr
+    
+inner_loop:
+
+    // copy pointer to break recurrence constraint
+    rotqbyi   dest, src, 0
+
+    // load 8 outcodes with 8 gaps between them, and next qword so we have the 9th
+    lqx       o0, src, ofs0
+    lqx       oR, src, ofsR
+    shufb     o1, o0, oR, shuf_BCDEFGHa
+    
+    // logic ops
+    // #define INTERP_O(O0,O1)  ( ( ((O0) | (O1)) & 0x80 ) | ( ((O0) & (O1)) & 0x1 ) << 7 )
+    or        oo, o0, o1
+    and       oa, o0, o1
+    shli      oa, oa, 7
+    or        o,  oo, oa
+    andbi     o,  o,  0x80
+
+    // interleave with source outcodes
+    shufb     o,  o0, o, shuf
+    
+    // write back the qword
+    stqx      o,  dest, ofs0
+    
+    // step pointer
+    a         src,  src,  stride
+
+    // loop inner
+    ai        r, r, -2
+    brnz      r, inner_loop
+    
+    // step to next column
+    ai        outcodes, outcodes, 16    
+
+    // settings for all remaining columns
+    mov       ofs0, ofs0_next
+    mov       shuf, shuf_AaCcEeGgIiKkMmOo
+    
+    // loop outer
+    ai        c, c, -16
+    brnz      c, outer_loop
+    
+    
+.endfunc
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void InterpolateOutcodesVerticalEvenAsm(u8 outcodes[], u32 nc, u32 nr)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// nc is an even multiple of 8
+
+// #define INTERP_O(O0,O1)  ( ( ((O0) | (O1)) & 0x80 ) | ( ((O0) & (O1)) & 0x1 ) << 7 )
+//
+// for (i32 r=1; r<nr; r+=2)
+// {
+//   for (i32 c=0; c<nc; c+=2)
+//   {
+//     i32 i = r*nc + c;
+//     i32 i0 = i-nc;
+//     i32 i1 = i+nc;
+//     outcodes[i] = INTERP_O(outcodes[i0], outcodes[i1]);
+//   }
+// }
+
+
+.cfunc void InterpolateOutcodesVerticalEvenAsm(u8 *outcodes, u32 nc, u32 nr)
+
+    .reg      stride, src, dest, c, r, o0, oM, o1, oo, oa, o, shuf_AbCdEfGhIjKlMnOp
+    
+    .extern   shuf_AbCdEfGhIjKlMnOp
+    lqa       shuf_AbCdEfGhIjKlMnOp, shuf_AbCdEfGhIjKlMnOp
+
+
+    // stride is 2 rows
+    a         stride, nc, nc
+
+    // loop over cols
+    mov       c, nc
+
+outer_loop:
+
+    // set pointers for this column
+    mov       src,  outcodes
+    
+    // init queue
+    lqd       o1, 0(src)
+
+    // loop over rows
+    ai        r, nr, -2
+    
+inner_loop:
+
+    // copy pointer to break recurrence constraint
+    rotqbyi   dest, src, 0
+
+    // get 3 qwords from outcodes
+    rotqbyi   o0, o1, 0
+    lqx       oM, src, nc
+    lqx       o1, src, stride
+    
+    // logic ops
+    // #define INTERP_O(O0,O1)  ( ( ((O0) | (O1)) & 0x80 ) | ( ((O0) & (O1)) & 0x1 ) << 7 )
+    or        oo, o0, o1
+    and       oa, o0, o1
+    shli      oa, oa, 7
+    or        o,  oo, oa
+    andbi     o,  o,  0x80
+
+    // interleave with source outcodes
+    shufb     o,  o,  oM, shuf_AbCdEfGhIjKlMnOp
+    
+    // write back the qword
+    stqx      o,  dest, nc
+    
+    // step pointer
+    a         src, src, stride
+
+    // loop inner
+    ai        r, r, -2
+    brnz      r, inner_loop
+    
+    // step to next column
+    ai        outcodes, outcodes, 16
+    
+    // loop outer
+    ai        c, c, -16
+    brnz      c, outer_loop
+    
+    
+.endfunc
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void InterpolateOutcodesVerticalOddAsm(u8 outcodes[], u32 nc, u32 nr)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// nc is an odd multiple of 8
+    
+// #define INTERP_O(O0,O1)  ( ( ((O0) | (O1)) & 0x80 ) | ( ((O0) & (O1)) & 0x1 ) << 7 )
+//
+// for (i32 r=1; r<nr; r+=2)
+// {
+//   for (i32 c=0; c<nc; c+=2)
+//   {
+//     i32 i = r*nc + c;
+//     i32 i0 = i-nc;
+//     i32 i1 = i+nc;
+//     outcodes[i] = INTERP_O(outcodes[i0], outcodes[i1]);
+//   }
+// }
+
+
+.cfunc void InterpolateOutcodesVerticalOddAsm(u8 *outcodes, u32 nc, u32 nr)
+
+    .reg      shuf, c, r, src, oL, oR, o0, o1, dest, oo, oa, o, oM, stride, stride_m16
+    .reg      shuf_CDab, shuf_abcdefghIjKlMnOp, shuf_AbCdEfGhIjKlMnOp
+    
+    // get shuffles
+    .extern   shuf_CDab, shuf_abcdefghIjKlMnOp, shuf_AbCdEfGhIjKlMnOp
+    lqa       shuf_CDab, shuf_CDab
+    lqa       shuf_abcdefghIjKlMnOp, shuf_abcdefghIjKlMnOp
+    lqa       shuf_AbCdEfGhIjKlMnOp, shuf_AbCdEfGhIjKlMnOp
+
+    // settings for dangling 8 columns
+    mov       shuf, shuf_abcdefghIjKlMnOp
+
+    // stride is 2 rows
+    a         stride, nc, nc
+    ai        stride_m16, stride, -16
+    
+    // loop over cols
+    ai        c, nc, 8
+
+outer_loop:
+
+    // set pointers for this column
+    mov       src, outcodes
+    
+    // init queue
+    lqd       oL, -16(src)
+    lqd       oR, 0(src)
+    shufb     o1, oL, oR, shuf_CDab
+
+    // loop over rows
+    ai        r, nr, -2
+    
+inner_loop:
+
+    // copy pointer to break recurrence constraint
+    rotqbyi   dest, src, 0
+
+    // advance queue
+    mov       o0, o1
+    
+    // get 2 qwords from 2 rows down
+    lqx       oL, src, stride_m16
+    lqx       oR, src, stride
+    
+    // shuffle L & R together
+    shufb     o1, oL, oR, shuf_CDab
+    
+    // logic ops
+    // #define INTERP_O(O0,O1)  ( ( ((O0) | (O1)) & 0x80 ) | ( ((O0) & (O1)) & 0x1 ) << 7 )
+    or        oo, o0, o1
+    and       oa, o0, o1
+    shli      oa, oa, 7
+    or        o,  oo, oa
+    andbi     o,  o,  0x80
+    
+    // get current qword at dest location
+    lqx       oM, src, nc
+    
+    // interleave
+    shufb     o,  o,  oM, shuf
+
+    // write back the qword
+    stqx      o,  dest, nc
+    
+    // step pointer
+    a         src, src, stride
+
+    // loop inner
+    ai        r, r, -2
+    brnz      r, inner_loop
+    
+    // settings for all remaining columns
+    mov       shuf, shuf_AbCdEfGhIjKlMnOp
+    
+    // step to next column
+    ai        outcodes, outcodes, 16
+    
+    // loop outer
+    ai        c, c, -16
+    brnz      c, outer_loop
+    
+    
+.endfunc
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void GenerateOutcodesAsm(u8 *outcodes, f32 *heights, vf32 origin, vf32 dvc, vf32 dvr, vf32 *planes, u32 nc, u32 nr)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// for (i32 r=0; r<nr; r++)
+// {
+//   vf32 r_vf32 = spu_splats((f32)r);
+//
+//   for (i32 c=0; c<nc; c++)
+//   {
+//     i32 i = r*nc+c;
+//
+//     vf32 c_vf32 = spu_splats((f32)c);
+//
+//     // compute vertex pos
+//     vf32 vert = origin_world + (c_vf32 * dvc_world) + (r_vf32 * dvr_world);
+//     vert = spu_insert(g_Heightmap[i]+spu_extract(vert,1), vert, 1);
+//     vert = spu_insert(1.0f, vert, 3);
+//
+//     u8 outcode = 0;
+//     for (u32 b=0; b<5; b++)
+//     {
+//       vf32 plane = g_Planes[b];
+//       f32 dot = spu_extract(spu_dot(plane, vert), 0);
+//       if (dot < 0.0f)
+//       {
+//         outcode |= (1<<b);
+//       }
+//     }
+//
+//     u8 old_outcode = g_Outcodes[i];
+//     outcode |= (old_outcode & 0x80);
+//     g_Outcodes[i] = outcode;
+//   }
+// }
+
+
+.cfunc void GenerateOutcodesAsm(u8 *outcodes, f32 *heights, vf32 origin, vf32 dvc, vf32 dvr, vf32 *planes, u32 nc, u32 nr)
+
+    .reg      const_bit1, const_bit2, const_bit3, const_bit4, onef, fourf
+    .reg      src, dest, src_stride, dest_stride, col03, row03, o03, old, new, r, h03
+    .reg      plane0, plane0_x, plane0_y, plane0_z, plane0_w
+    .reg      plane1, plane1_x, plane1_y, plane1_z, plane1_w
+    .reg      plane2, plane2_x, plane2_y, plane2_z, plane2_w
+    .reg      plane3, plane3_x, plane3_y, plane3_z, plane3_w
+    .reg      plane4, plane4_x, plane4_y, plane4_z, plane4_w
+    .reg      origin_x, origin_y, origin_z, dvc_x, dvc_z, dvr_x, dvr_z
+    .reg      verts_x0, verts_z0
+    .reg      dots0_00, dots1_00, dots2_00, dots3_00, dots4_00
+    .reg      dots0_0, dots1_0, dots2_0, dots3_0, dots4_0
+    .reg      dots0, dots1, dots2, dots3, dots4
+    .reg      colstep0, colstep1, colstep2, colstep3, colstep4
+    .reg      rowstep0, rowstep1, rowstep2, rowstep3, rowstep4
+    .reg      bits0, bits1, bits2, bits3, bits4
+    .reg      select_mask, select_mask0, mask_align
+    .reg      shuf_AAAA, shuf_BBBB, shuf_CCCC, shuf_DDDD, shuf_AEIMAEIMAEIMAEIM
+    
+    // init constants
+    ilhu      const_bit1, 0x0200
+    ilhu      const_bit2, 0x0400
+    ilhu      const_bit3, 0x0800
+    ilhu      const_bit4, 0x1000
+    ilhu      onef,  0x3F80
+    ilhu      fourf, 0x4080
+    
+    // load shuffles
+    .extern   shuf_AAAA, shuf_BBBB, shuf_CCCC, shuf_DDDD, shuf_AEIMAEIMAEIMAEIM
+    lqa       shuf_AAAA, shuf_AAAA
+    lqa       shuf_BBBB, shuf_BBBB
+    lqa       shuf_CCCC, shuf_CCCC
+    lqa       shuf_DDDD, shuf_DDDD
+    lqa       shuf_AEIMAEIMAEIMAEIM, shuf_AEIMAEIMAEIMAEIM
+    
+    // set strides
+    shli      src_stride, nc, 2
+    mov       dest_stride, nc
+
+    // get planes
+    lqd       plane0, 0x00(planes)
+    lqd       plane1, 0x10(planes)
+    lqd       plane2, 0x20(planes)
+    lqd       plane3, 0x30(planes)
+    lqd       plane4, 0x40(planes)
+    
+    // broadcast plane components
+    shufb     plane0_x, plane0, plane0, shuf_AAAA
+    shufb     plane0_y, plane0, plane0, shuf_BBBB
+    shufb     plane0_z, plane0, plane0, shuf_CCCC
+    shufb     plane0_w, plane0, plane0, shuf_DDDD
+
+    shufb     plane1_x, plane1, plane1, shuf_AAAA
+    shufb     plane1_y, plane1, plane1, shuf_BBBB
+    shufb     plane1_z, plane1, plane1, shuf_CCCC
+    shufb     plane1_w, plane1, plane1, shuf_DDDD
+
+    shufb     plane2_x, plane2, plane2, shuf_AAAA
+    shufb     plane2_y, plane2, plane2, shuf_BBBB
+    shufb     plane2_z, plane2, plane2, shuf_CCCC
+    shufb     plane2_w, plane2, plane2, shuf_DDDD
+
+    shufb     plane3_x, plane3, plane3, shuf_AAAA
+    shufb     plane3_y, plane3, plane3, shuf_BBBB
+    shufb     plane3_z, plane3, plane3, shuf_CCCC
+    shufb     plane3_w, plane3, plane3, shuf_DDDD
+
+    shufb     plane4_x, plane4, plane4, shuf_AAAA
+    shufb     plane4_y, plane4, plane4, shuf_BBBB
+    shufb     plane4_z, plane4, plane4, shuf_CCCC
+    shufb     plane4_w, plane4, plane4, shuf_DDDD
+
+    // broadcast origin & basis vec components
+    shufb     origin_x, origin, origin, shuf_AAAA
+    shufb     origin_y, origin, origin, shuf_BBBB
+    shufb     origin_z, origin, origin, shuf_CCCC
+
+    shufb     dvc_x, dvc, dvc, shuf_AAAA
+    shufb     dvc_z, dvc, dvc, shuf_CCCC
+
+    shufb     dvr_x, dvr, dvr, shuf_AAAA
+    shufb     dvr_z, dvr, dvr, shuf_CCCC
+
+    // init col03 and base selection mask
+    il128     col03, 0x00000000_3F800000_40000000_40400000
+    il128     select_mask0, 0x7F7F7F7F_00000000_00000000_00000000
+    sfi       mask_align, nc, 0
+    
+    // compute dot prods at first row, first 4 cols
+    // dots0_00 =  p0x*ox + p0y*oy + p0z*oz + p0w, etc
+    fma       dots0_00, plane0_x, origin_x, plane0_w
+    fma       dots0_00, plane0_y, origin_y, dots0_00
+    fma       dots0_00, plane0_z, origin_z, dots0_00
+    
+    fma       dots1_00, plane1_x, origin_x, plane1_w
+    fma       dots1_00, plane1_y, origin_y, dots1_00
+    fma       dots1_00, plane1_z, origin_z, dots1_00
+    
+    fma       dots2_00, plane2_x, origin_x, plane2_w
+    fma       dots2_00, plane2_y, origin_y, dots2_00
+    fma       dots2_00, plane2_z, origin_z, dots2_00
+    
+    fma       dots3_00, plane3_x, origin_x, plane3_w
+    fma       dots3_00, plane3_y, origin_y, dots3_00
+    fma       dots3_00, plane3_z, origin_z, dots3_00
+    
+    fma       dots4_00, plane4_x, origin_x, plane4_w
+    fma       dots4_00, plane4_y, origin_y, dots4_00
+    fma       dots4_00, plane4_z, origin_z, dots4_00
+    
+    // set row/col step for dot prods
+    // colstep0 = p0x*dvcx + p0z*dvcz, etc
+    // rowstep0 = p0x*dvrx + p0z*dvrz, etc
+    fm        colstep0, plane0_x, dvc_x
+    fma       colstep0, plane0_z, dvc_z, colstep0
+    
+    fm        colstep1, plane1_x, dvc_x
+    fma       colstep1, plane1_z, dvc_z, colstep1
+    
+    fm        colstep2, plane2_x, dvc_x
+    fma       colstep2, plane2_z, dvc_z, colstep2
+    
+    fm        colstep3, plane3_x, dvc_x
+    fma       colstep3, plane3_z, dvc_z, colstep3
+    
+    fm        colstep4, plane4_x, dvc_x
+    fma       colstep4, plane4_z, dvc_z, colstep4
+    
+    fm        rowstep0, plane0_x, dvr_x
+    fma       rowstep0, plane0_z, dvr_z, rowstep0
+    
+    fm        rowstep1, plane1_x, dvr_x
+    fma       rowstep1, plane1_z, dvr_z, rowstep1
+    
+    fm        rowstep2, plane2_x, dvr_x
+    fma       rowstep2, plane2_z, dvr_z, rowstep2
+    
+    fm        rowstep3, plane3_x, dvr_x
+    fma       rowstep3, plane3_z, dvr_z, rowstep3
+    
+    fm        rowstep4, plane4_x, dvr_x
+    fma       rowstep4, plane4_z, dvr_z, rowstep4
+    
+    
+    // loop over cols
+
+outer_loop:
+
+    // set pointers
+    mov       src,  heights
+    mov       dest, outcodes
+
+    // init partial sums for vert calculation
+    fma       verts_x0, col03, dvc_x, origin_x
+    fma       verts_z0, col03, dvc_z, origin_z
+    
+    // init selection mask
+    mov       select_mask, select_mask0
+    
+    // init row03
+    il        row03, 0
+    
+    // compute dot prods at row 0 for current cols
+    // dots0_0 = p0x*(ox+c03*dvcx) + p0y*oy + p0z*(oz+c03*dvcz) + p0w
+    //         = (p0x*ox + p0y*oy + p0z*oz + p0w) + c03*(p0x*dvcx+p0z*dvcz), etc
+    fma       dots0_0, col03, colstep0, dots0_00
+    fma       dots1_0, col03, colstep1, dots1_00
+    fma       dots2_0, col03, colstep2, dots2_00
+    fma       dots3_0, col03, colstep3, dots3_00
+    fma       dots4_0, col03, colstep4, dots4_00
+    
+
+    // loop over rows
+    mov       r, nr
+    
+inner_loop:
+    
+    // get 4 heights
+    lqd       h03, 0(src)
+    
+    // compute dot prods
+    // dots0 = p0x*vx + p0y*vy + p0z*vz + p0w
+    //       = p0x*(r03*dvrx+vx0) + p0y*(oy+h03) + p0z*(r03*dvrz+vz0) + p0w
+    //       = p0x*(ox+c03*dvcx+r03*dvrx) + p0y*(oy+h03) + p0z*(oz+c03*dvcz+r03*dvrz) + p0w
+    //       = [p0x*(ox+c03*dvcx) + p0y*oy + p0z*(oz+c03*dvcz) + p0w] + r03*(p0x*dvrx + p0z*dvrz) + h03*p0y, etc
+    
+    // form dot prods
+    fma       dots0, row03, rowstep0, dots0_0
+    fma       dots0, h03, plane0_y, dots0
+    
+    fma       dots1, row03, rowstep1, dots1_0
+    fma       dots1, h03, plane1_y, dots1
+    
+    fma       dots2, row03, rowstep2, dots2_0
+    fma       dots2, h03, plane2_y, dots2
+    
+    fma       dots3, row03, rowstep3, dots3_0
+    fma       dots3, h03, plane3_y, dots3
+    
+    fma       dots4, row03, rowstep4, dots4_0
+    fma       dots4, h03, plane4_y, dots4
+    
+    // rotate the sign bits into their bit positions in the target outcodes
+    rotqmbii  bits0, dots0, -7                // 0000000a
+    rotqmbii  bits1, dots1, -6                // 000000bb
+    rotqmbii  bits2, dots2, -5                // 00000ccc
+    rotqmbii  bits3, dots3, -4                // 0000dddd
+    rotqmbii  bits4, dots4, -3                // 000eeeee
+    
+    // combine bits
+    selb      o03, bits0, bits1, const_bit1   // 000000ba
+    selb      o03, o03,   bits2, const_bit2   // 00000cba
+    selb      o03, o03,   bits3, const_bit3   // 0000dcba
+    selb      o03, o03,   bits4, const_bit4   // 000edcba
+    
+    // suppress bits 5-7
+    andbi     o03, o03, 0x1F
+    
+    // pack outcodes together
+    shufb     o03, o03, o03, shuf_AEIMAEIMAEIMAEIM
+    
+    // combine with existing quadword, preserving bit7 for each newly inserted outcode
+    lqd       old, 0(dest)
+    selb      new, old, o03, select_mask
+    stqd      new, 0(dest)
+    
+    // step to next row
+    a         src,  src,  src_stride
+    a         dest, dest, dest_stride
+    fa        row03, row03, onef
+    rotqby    select_mask, select_mask, mask_align
+    
+    // loop inner
+    ai        r, r, -1
+    brnz      r, inner_loop
+    
+    // step to next 4 columns
+    ai        heights, heights, 16
+    ai        outcodes, outcodes, 4
+    fa        col03, col03, fourf
+    rotqbyi   select_mask0, select_mask0, -4
+    
+    // loop outer
+    ai        nc, nc, -4
+    brnz      nc, outer_loop
+    
+    
+.endfunc
+    
+    
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void SetNearBitsAsm(u8 *outcodes, u32 nc, u32 nr)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// // set the N bit of all degree-4 verts (this improves performance in some later loops) (It does? How)
+// for (i32 r=0; r<nr; r++)
+// {
+//   for (i32 c=1-(r&1); c<nc; c+=2)
+//   {
+//     u32 i=r*nc+c;
+//     g_Outcodes[i] |= 0x01;
+//   }
+// }
+
+
+.cfunc void SetNearBitsAsm(u8 *outcodes, u32 nc, u32 nr)
+
+    .reg      src, dest, c, r, o0, o1, two_nc, ofs, near0, near1, cmp, shuf_AAAA
+    
+    
+    // set broadcast shuffle
+    ila       shuf_AAAA, 0x00010203
+    
+    // set two-row stride
+    a         two_nc, nc, nc
+
+    // odd row offset = nc & 15 ? nc+8 : nc
+    ai        ofs, nc, 8
+    andi      ofs, ofs, -16
+    
+    // initialize near bit patterns for dangling half qwords
+    // near0 = nc&8 ? 0    : 0
+    // near1 = nc&8 ? blah : 0
+    il        near0, 0
+    il128     near1, 0x00010001_00010001_01000100_01000100
+    andi      cmp, nc, 8
+    ceqi      cmp, cmp, 0
+    shufb     cmp, cmp, cmp, shuf_AAAA
+    andc      near1, near1, cmp
+    
+    // adjust pointer to account for dangling bits
+    ai        outcodes, outcodes, -16
+    
+    // loop over cols
+    // loop cnt = nc&8 ? nc+8 : nc+16
+    ai        c, nc, 16
+    andi      c, c, -16
+    
+outer_loop:
+
+    // set pointer on top row
+    mov       src,  outcodes
+
+    // loop over rows
+    mov       r, nr
+    
+inner_loop:
+
+    // copy pointer to break recurrence constraint
+    mov       dest, src
+
+    // load 2 qwords
+    lqd       o0, 0(src)
+    lqx       o1, src, ofs
+    
+    // set near bits
+    or        o0, o0, near0
+    or        o1, o1, near1
+    
+    // write qwords back
+    stqd      o0, 0(dest)
+    stqx      o1, dest, ofs
+    
+    // step 2 rows
+    a         src, src, two_nc
+    
+    // loop inner
+    ai        r, r, -2
+    brnz      r, inner_loop
+    
+    // step 16 cols
+    ai        outcodes, outcodes, 16
+    
+    // set near bit patterns for all remaining cols
+    ilh       near0, 0x0001
+    ilh       near1, 0x0100
+    
+    // loop outer
+    
+    ai        c, c, -16
+    brnz      c, outer_loop
+    
+    
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void GetRefinementWindowAsm(i16 *p_min_c_dest, i16 *p_max_c_dest, i16 *p_min_r_dest, i16 *p_max_r_dest,
+//                             u8 *outcodes, u32 nc_src, u32 nr_src, u32 lod)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// // get window extents, assuming an initial origin coincident with the top-left corner of the source window
+//
+// for (i16 r_src=0; r_src<nr_src; r_src++)
+// {
+//   for (i16 c_src=0; c_src<nc_src; c_src++)
+//   {
+//     i16 i_src = r_src * nc_src + c_src;
+//
+//     if (!(g_Outcodes[i_src] & 0x80))
+//     {
+//       i16 c_dest, r_dest;
+//       if (lod & 1)
+//       {
+//         c_dest = c_src - r_src;
+//         r_dest = c_src + r_src;
+//       }
+//       else
+//       {
+//         c_dest = r_src + c_src;
+//         r_dest = r_src - c_src;
+//       }
+//
+//       if (c_dest < min_c_dest) min_c_dest = c_dest;
+//       if (c_dest > max_c_dest) max_c_dest = c_dest;
+//       if (r_dest < min_r_dest) min_r_dest = r_dest;
+//       if (r_dest > max_r_dest) max_r_dest = r_dest;
+//     }
+//   }
+// }
+
+
+    // c_src = (c+0,c+1,c+2,c+3,c+4,c+5,c+6,c+7)
+    // r_src = (r,r,r,r,r,r,r,r)
+
+    // even lod
+    // c_dest   = r_src + c_src = (r+c+0, r+c+1, r+c+2, r+c+3, r+c+4, r+c+5, r+c+6, r+c+7)
+    // r_dest   = r_src - c_src = (r-c-0, r-c-1, r-c-2, r-c-3, r-c-4, r-c-5, r-c-6, r-c-7)
+    
+    // c_dest0  = ( 0, 1, 2, 3, 4, 5, 6, 7)
+    // r_dest0  = ( 0,-1,-2,-3,-4,-5,-6,-7)  neg for even lod
+    // dc_dest  = ( 1, 1, 1, 1, 1, 1, 1, 1)  pos for even lod
+    // dr_dest  = ( 1, 1, 1, 1, 1, 1, 1, 1)
+    // dc_dest0 = ( 8, 8, 8, 8, 8, 8, 8, 8)
+    // dr_dest0 = (-8,-8,-8,-8,-8,-8,-8,-8)  neg for even lod
+    
+    // odd lod
+    // c_dest = c_src - r_src = (c-r+0, c-r+1, c-r+2, c-r+3, c-r+4, c-r+5, c-r+6, c-r+7)
+    // r_dest = c_src + r_src = (c+r+0, c+r+1, c+r+2, c+r+3, c+r+4, c+r+5, c+r+6, c+r+7)
+    
+    // c_dest0  = ( 0, 1, 2, 3, 4, 5, 6, 7)
+    // r_dest0  = ( 0, 1, 2, 3, 4, 5, 6, 7)  pos for odd lod  
+    // dc_dest  = (-1,-1,-1,-1,-1,-1,-1,-1)  neg for odd lod
+    // dr_dest  = ( 1, 1, 1, 1, 1, 1, 1, 1)
+    // dc_dest0 = ( 8, 8, 8, 8, 8, 8, 8, 8)
+    // dr_dest0 = ( 8, 8, 8, 8, 8, 8, 8, 8)  pos for odd lod
+
+
+
+.cfunc void GetRefinementWindowAsm(i16 *p_min_c_dest, i16 *p_max_c_dest, i16 *p_min_r_dest, i16 *p_max_r_dest,
+                                   u8 *outcodes, u32 nc_src, u32 nr_src, u32 lod)
+
+    .reg      lod_mask, shuf_AABBCCDDEEFFGGHH, src, c, r, o
+    .reg      cmp_o, cmp_min_c, cmp_max_c, cmp_min_r, cmp_max_r
+    .reg      min_c_dest, max_c_dest, min_r_dest, max_r_dest
+    .reg      min_c_shifted, max_c_shifted, min_r_shifted, max_r_shifted
+    .reg      c_dest, r_dest, c_dest0, r_dest0, dc_dest, dr_dest, dc_dest0, dr_dest0
+
+    // constants
+    .extern   shuf_AABBCCDDEEFFGGHH
+    lqa       shuf_AABBCCDDEEFFGGHH, shuf_AABBCCDDEEFFGGHH
+
+    // init mins & maxes
+    ilh       min_c_dest, 0x7FFF
+    ilh       max_c_dest, 0x8000
+    ilh       min_r_dest, 0x7FFF
+    ilh       max_r_dest, 0x8000
+
+    // get even/odd lod select mask
+    andi      lod_mask, lod, 1
+    sfi       lod_mask, lod_mask, 0
+    fsmb      lod_mask, lod_mask
+
+    // init dest row/col vars
+    il128     c_dest0, 0x00000001_00020003_00040005_00060007  // c_dest0 = ( 0, 1, 2, 3, 4, 5, 6, 7)
+    il128     r_dest0, 0x0000FFFF_FFFEFFFD_FFFCFFFB_FFFAFFF9  // r_dest0 = (-0,-1,-2,-3,-4,-5,-6,-7)
+    selb      r_dest0, r_dest0, c_dest0, lod_mask             // r_dest0 = (lod&1) ? ( 0, 1, 2, 3, 4, 5, 6, 7) : (-0,-1,-2,-3,-4,-5,-6,-7)
+    
+    // set row increments
+    ilh       dc_dest, 0xFFFF                                 // dc_dest = (-1,-1,-1,-1,-1,-1,-1,-1)
+    ilh       dr_dest, 0x0001                                 // dr_dest = ( 1, 1, 1, 1, 1, 1, 1, 1)
+    selb      dc_dest, dr_dest, dc_dest, lod_mask             // dc_dest = (lod&1) ? (-1,-1,-1,-1,-1,-1,-1,-1) : ( 1, 1, 1, 1, 1, 1, 1, 1)
+
+    // set col increments
+    ilh       dc_dest0, 0x0008                                // dc_dest0 = ( 8, 8, 8, 8, 8, 8, 8, 8)
+    ilh       dr_dest0, 0xFFF8                                // dr_dest0 = (-8,-8,-8,-8,-8,-8,-8,-8)
+    selb      dr_dest0, dr_dest0, dc_dest0, lod_mask          // dr_dest0 = (lod&1) ? ( 8, 8, 8, 8, 8, 8, 8, 8) : (-8,-8,-8,-8,-8,-8,-8,-8)
+
+    // loop over cols
+    mov       c, nc_src
+
+outer_loop:
+
+    // top row settings
+    mov       src, outcodes
+    mov       c_dest, c_dest0
+    mov       r_dest, r_dest0
+    
+    // loop over rows
+    mov       r, nr_src
+
+inner_loop:
+
+    // get 8 outcodes
+    lqd       o, 0(src)
+    rotqby    o, o, src
+    
+    // shuffle outcodes and test
+    shufb     o, o, o, shuf_AABBCCDDEEFFGGHH
+    andbi     cmp_o, o, 0x80
+    ceqhi     cmp_o, cmp_o, 0
+    
+    // tests for mins & maxes
+    cgth      cmp_min_c, min_c_dest, c_dest
+    cgth      cmp_max_c, c_dest, max_c_dest
+    cgth      cmp_min_r, min_r_dest, r_dest
+    cgth      cmp_max_r, r_dest, max_r_dest
+    
+    // combine with outcode test
+    and       cmp_min_c, cmp_min_c, cmp_o
+    and       cmp_max_c, cmp_max_c, cmp_o
+    and       cmp_min_r, cmp_min_r, cmp_o
+    and       cmp_max_r, cmp_max_r, cmp_o
+    
+    // set new mins & maxes according to test results
+    selb      min_c_dest, min_c_dest, c_dest, cmp_min_c
+    selb      max_c_dest, max_c_dest, c_dest, cmp_max_c
+    selb      min_r_dest, min_r_dest, r_dest, cmp_min_r
+    selb      max_r_dest, max_r_dest, r_dest, cmp_max_r
+    
+    // step to next row
+    a         src, src, nc_src
+    ah        c_dest, c_dest, dc_dest
+    ah        r_dest, r_dest, dr_dest
+    
+    // loop inner
+    ai        r, r, -1
+    brnz      r, inner_loop
+    
+    // step 8 cols
+    ai        outcodes, outcodes, 8
+    ah        c_dest0, c_dest0, dc_dest0
+    ah        r_dest0, r_dest0, dr_dest0
+    
+    // loop outer
+    ai        c, c, -8
+    brnz      c, outer_loop
+    
+    
+    // extract mins & maxes from qwords
+    rotqbyi   min_c_shifted, min_c_dest, 8
+    rotqbyi   max_c_shifted, max_c_dest, 8
+    rotqbyi   min_r_shifted, min_r_dest, 8
+    rotqbyi   max_r_shifted, max_r_dest, 8
+    
+    cgth      cmp_min_c, min_c_dest, min_c_shifted
+    cgth      cmp_max_c, max_c_shifted, max_c_dest
+    cgth      cmp_min_r, min_r_dest, min_r_shifted
+    cgth      cmp_max_r, max_r_shifted, max_r_dest
+    
+    selb      min_c_dest, min_c_dest, min_c_shifted, cmp_min_c
+    selb      max_c_dest, max_c_dest, max_c_shifted, cmp_max_c
+    selb      min_r_dest, min_r_dest, min_r_shifted, cmp_min_r
+    selb      max_r_dest, max_r_dest, max_r_shifted, cmp_max_r
+    
+
+
+    rotqbyi   min_c_shifted, min_c_dest, 4
+    rotqbyi   max_c_shifted, max_c_dest, 4
+    rotqbyi   min_r_shifted, min_r_dest, 4
+    rotqbyi   max_r_shifted, max_r_dest, 4
+    
+    cgth      cmp_min_c, min_c_dest, min_c_shifted
+    cgth      cmp_max_c, max_c_shifted, max_c_dest
+    cgth      cmp_min_r, min_r_dest, min_r_shifted
+    cgth      cmp_max_r, max_r_shifted, max_r_dest
+    
+    selb      min_c_dest, min_c_dest, min_c_shifted, cmp_min_c
+    selb      max_c_dest, max_c_dest, max_c_shifted, cmp_max_c
+    selb      min_r_dest, min_r_dest, min_r_shifted, cmp_min_r
+    selb      max_r_dest, max_r_dest, max_r_shifted, cmp_max_r
+    
+
+
+    rotqbyi   min_c_shifted, min_c_dest, 2
+    rotqbyi   max_c_shifted, max_c_dest, 2
+    rotqbyi   min_r_shifted, min_r_dest, 2
+    rotqbyi   max_r_shifted, max_r_dest, 2
+    
+    cgth      cmp_min_c, min_c_dest, min_c_shifted
+    cgth      cmp_max_c, max_c_shifted, max_c_dest
+    cgth      cmp_min_r, min_r_dest, min_r_shifted
+    cgth      cmp_max_r, max_r_shifted, max_r_dest
+    
+    selb      min_c_dest, min_c_dest, min_c_shifted, cmp_min_c
+    selb      max_c_dest, max_c_dest, max_c_shifted, cmp_max_c
+    selb      min_r_dest, min_r_dest, min_r_shifted, cmp_min_r
+    selb      max_r_dest, max_r_dest, max_r_shifted, cmp_max_r
+    
+
+
+    // store results to output locations
+    stqd      min_c_dest, 0(p_min_c_dest)
+    stqd      max_c_dest, 0(p_max_c_dest)
+    stqd      min_r_dest, 0(p_min_r_dest)
+    stqd      max_r_dest, 0(p_max_r_dest)
+
+
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_AccumulateNormalMaps(f32* dest, f32* lo, f32* hi, f32 weight, i32 nc_dest, i32 nr_dest)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  
+.cfunc void R2O_AccumulateNormalMaps(f32* dest, f32* lo, f32* hi, f32 weight, i32 nc_dest, i32 nr_dest)
+
+    .reg      addr_dest0, addr_lo, addr_hi0
+    
+    mov       addr_dest0, dest
+    mov       addr_lo,    lo
+    mov       addr_hi0,   hi
+  
+    .reg      half, half_weight, qstride_lo, stride_lo, qstride_dest, stride_dest_r2
+    .reg      dest_ofs_r1, r_nc0, r_nc1, r_nc2, r_nc3, lo_ofs_r_start, r_de0, r_de1, dest_ofs_end
+    .reg      four_c, r, lo_ofs_r, addr_lo_r, ofs_lo_adj, ofs_lo_r1, c_cnt, is_last_c
+    .reg      loL, loR, loLa, loLb
+    .reg      loRa, loRb, lo0L, lo0R, lo0_prev, lo1_prev
+    .reg      lo0, lo1, lo2, lo3, sum0, sum1
+    .reg      hi0, hi1, hi2, hi3, out0, out1, out2, out3
+    .reg      ofs_hi, ofs_dest, const_0x1FF0, const_0x0FF0, const_0x1000, const_0x0F00
+    .reg      addr_hi1, addr_hi2, addr_hi3, addr_dest1, addr_dest2, addr_dest3
+  
+    // get shuffles
+    .reg      shuf_AAAA, shuf_AABB, shuf_ABBC, shuf_CCDD, shuf_CDDa
+    .extern   shuf_AAAA, shuf_AABB, shuf_ABBC, shuf_CCDD, shuf_CDDa
+    lqa       shuf_AAAA, shuf_AAAA
+    lqa       shuf_AABB, shuf_AABB
+    lqa       shuf_ABBC, shuf_ABBC
+    lqa       shuf_CCDD, shuf_CCDD
+    lqa       shuf_CDDa, shuf_CDDa
+
+    // set constants
+    ilhu      half,         0x3F00
+    il        const_0x1FF0, 0x1FF0
+    il        const_0x0FF0, 0x0FF0
+    il        const_0x1000, 0x1000
+    il        const_0x0F00, 0x0F00
+
+    // broadcast weight
+    shufb     weight, weight, weight,  shuf_AAAA
+    fm        half_weight, half, weight
+
+    // precalculated offsets etc
+    rotmi     qstride_lo,     nc_dest,     -3
+    shli      stride_lo,      qstride_lo,   4
+    rotmi     qstride_dest,   nc_dest,     -2
+    shli      stride_dest_r2, qstride_dest, 5
+    shli      dest_ofs_r1,    qstride_dest, 4
+
+    // lo_ofs_r_start = ((nc_dest>>1)*((nr_dest>>1)-1)) << 2 );
+    // dest_ofs_end   = ( (nc_dest*(nr_dest-2)) << 2 );
+    rotmi     r_nc0,          nc_dest, -1
+    rotmi     r_nc1,          nr_dest, -1
+    ai        r_nc2,          r_nc1,   -1
+    mpy       r_nc3,          r_nc0,    r_nc2
+    shli      lo_ofs_r_start, r_nc3,    2
+    ai        r_de0,          nr_dest, -2
+    mpy       r_de1,          nc_dest,  r_de0
+    shli      dest_ofs_end,   r_de1,    2
+
+    // preadjust dest address so we can use the dest offset as a countdown-to-zero
+    sf        addr_dest0,   stride_dest_r2, addr_dest0
+    a         dest_ofs_end, dest_ofs_end,   stride_dest_r2
+
+    // aux pointers
+    ai        addr_hi1,   addr_hi0,   0x10
+    ai        addr_hi2,   addr_hi0,   0x80
+    ai        addr_hi3,   addr_hi0,   0x90
+    ai        addr_dest1, addr_dest0, 0x10
+    a         addr_dest2, addr_dest0, dest_ofs_r1
+    a         addr_dest3, addr_dest1, dest_ofs_r1
+
+    // loop over destination columns
+    il        four_c, 0
+    mov       c_cnt, nc_dest
+
+outer_loop:
+
+    // init lo ptr/ofs temporarily on the top row (because we need to init the queue with the wrapped values)
+    rotmi     lo_ofs_r,  four_c, -1        // ((c>>1) << 2 /* sizeof(float) */ )
+    a         addr_lo_r, addr_lo, lo_ofs_r
+
+    // ofs_lo_r1 = (c+8==nc_dest) ? 1-qstride_lo : 1 )
+    ceqi      is_last_c, c_cnt, 8
+    and       ofs_lo_adj, is_last_c,  qstride_lo
+    sfi       ofs_lo_r1,     ofs_lo_adj, 1
+    shli      ofs_lo_r1,     ofs_lo_r1,     4
+
+    // init hi idx on penultimate row
+    // idx_hi  = ( ((c>>2) & 7) + 30*8 );
+    andi      ofs_hi,  four_c,  0x70
+    a         ofs_hi,  ofs_hi,  const_0x0F00
+
+    // init dest ptr on the penultimate row
+    // p_dest = (vf32 *)&dest[c + nc_dest*(nr_dest-2)];
+    a         ofs_dest, four_c, dest_ofs_end
+
+    // initialize input queue for low lod
+    lqd       loL, 0(addr_lo_r)
+    lqx       loR, addr_lo_r, ofs_lo_r1
+
+    shufb     loLa, loL, loR, shuf_AABB
+    shufb     loLb, loL, loR, shuf_ABBC
+    shufb     loRa, loL, loR, shuf_CCDD
+    shufb     loRb, loL, loR, shuf_CDDa
+
+    fa        lo0L, loLa, loLb
+    fa        lo0R, loRa, loRb
+
+    fm        lo0_prev, half_weight, lo0L
+    fm        lo1_prev, half_weight, lo0R
+
+    // wrap the lo ptr to the bottom row
+    a         lo_ofs_r,  lo_ofs_r, lo_ofs_r_start
+    a         addr_lo_r, addr_lo,  lo_ofs_r
+
+    // loop over destination row pairs in reverse order
+    mov       r, nr_dest
+
+inner_loop:
+
+    // low lod
+    lqd       loL, 0(addr_lo_r)
+    lqx       loR, addr_lo_r, ofs_lo_r1
+ 
+    shufb     loLa, loL, loR, shuf_AABB
+    shufb     loLb, loL, loR, shuf_ABBC
+    shufb     loRa, loL, loR, shuf_CCDD
+    shufb     loRb, loL, loR, shuf_CDDa
+ 
+    fa        lo0L, loLa, loLb
+    fa        lo0R, loRa, loRb
+
+    fm        lo0,  half_weight, lo0L
+    fm        lo1,  half_weight, lo0R
+
+    fa        sum0, lo0, lo0_prev
+    fa        sum1, lo1, lo1_prev
+
+    fm        lo2,  half, sum0
+    fm        lo3,  half, sum1
+    
+    rotqbyi   lo0_prev, lo0, 0
+    rotqbyi   lo1_prev, lo1, 0
+    
+    // high lod
+    lqx       hi0, addr_hi0, ofs_hi
+    lqx       hi1, addr_hi1, ofs_hi
+    lqx       hi2, addr_hi2, ofs_hi
+    lqx       hi3, addr_hi3, ofs_hi
+ 
+    // accumulate
+    fma       out0, weight, hi0, lo0
+    fma       out1, weight, hi1, lo1
+    fma       out2, weight, hi2, lo2
+    fma       out3, weight, hi3, lo3
+
+    // store
+    stqx      out0, addr_dest0, ofs_dest
+    stqx      out1, addr_dest1, ofs_dest
+    stqx      out2, addr_dest2, ofs_dest
+    stqx      out3, addr_dest3, ofs_dest
+ 
+    // step pointers
+    sf        addr_lo_r, stride_lo, addr_lo_r
+    
+    ai        ofs_hi,  ofs_hi,  -256
+    and       ofs_hi,  ofs_hi,  const_0x0FF0
+    
+    sf        ofs_dest, stride_dest_r2, ofs_dest
+    
+    // loop inner
+    ai        r, r, -2
+    brnz      r, inner_loop
+    
+    // loop outer
+    ai        four_c, four_c, 32
+    ai        c_cnt,  c_cnt,  -8
+    brnz      c_cnt,  outer_loop
+    
+    
+.endfunc
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_PadOutcodesAsm(u8 *dst, u8 *src, u32 src_width, u32 src_height)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// {
+//   for (u32 r=0; r<src_height; r++)
+//   {
+//     // copy row
+//     for (u32 c=0; c<src_width; c++)
+//     {
+//       *dst++ = *src++;
+//     }
+// 
+//     // pad with 8 bytes
+//     for (u32 c=0; c<8; c++)
+//     {
+//       *dst++ = 0x80;
+//     }
+//   }
+// }
+
+.cfunc void R2O_PadOutcodesAsm(u8 *dst, u8 *src, u32 src_width, u32 src_height)
+
+    .reg      p_src, p_dst, dst_width, src_step_inner, dst_step_inner, cols, rows, q0, q1, q2
+    .reg      cull_bits, shuf_8888, shuf_00AA, shuf_CDab, mask, shuf
+
+
+    ilh       cull_bits, 0x8080       // cull_bits = 0x80 in each byte
+    ilh       shuf_8888, 0xE0E0
+    il128     shuf_00AA, "00AA"
+    il128     shuf_CDab, "CDab"
+    
+    ai        dst_width, src_width, 8
+    a         src_step_inner, src_width, src_width
+    a         dst_step_inner, dst_width, dst_width
+
+
+    mov       cols, dst_width
+
+outer_loop:
+
+    mov       p_src, src
+    mov       p_dst, dst
+    
+    ceqi      mask, cols, 16
+    shufb     mask, mask, mask, shuf_00AA         // mask = mask_0000 mostly, but mask_0011 on the final pass
+    selb      shuf, shuf_CDab,  shuf_8888, mask   // shuf = shuf_CDab mostly, but shuf_CD88 on the final pass
+    
+    
+    mov       rows, src_height
+    
+
+inner_loop:
+
+    lqd       q0, 0(p_src)
+    lqx       q1, src_width, p_src
+    lqx       q2, dst_width, p_src
+    
+    selb      q0, q0, cull_bits, mask
+    shufb     q1, q1, q2, shuf
+    
+    stqd      q0, 0(p_dst)
+    stqx      q1, dst_width, p_dst
+    
+    a         p_src, p_src, src_step_inner  // 2 * src_width
+    a         p_dst, p_dst, dst_step_inner  // 2 * dst_width
+    
+    ai        rows, rows, -2
+    brnz      rows, inner_loop
+    
+    
+    ai        src, src, 16
+    ai        dst, dst, 16
+    
+    ai        cols, cols, -16
+    brnz      cols, outer_loop
+    
+    
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_PackOutcodesAsm(u8 *dst, u32 dst_width, u32 dst_height, u8 *src)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// {
+//   for (u32 r=0; r<dst_height; r++)
+//   {
+//     // copy row
+//     for (u32 c=0; c<dst_width; c++)
+//     {
+//       *dst++ = *src++;
+//     }
+// 
+//     // skip 8 bytes
+//     src += 8;
+//   }
+// }
+
+.cfunc void R2O_PackOutcodesAsm(u8 *dst, u32 dst_width, u32 dst_height, u8 *src)
+
+    .reg      p_src, p_dst, src_width, ofs_width, src_step_inner, dst_step_inner, cols, rows, q0, q1, q2
+    .reg      shuf_CDab, shuf_ABab
+
+
+    il128     shuf_CDab, "CDab"
+    il128     shuf_ABab, "ABab"
+
+
+    ai        src_width, dst_width, 8
+    ai        ofs_width, dst_width, 24
+    a         src_step_inner, src_width, src_width
+    a         dst_step_inner, dst_width, dst_width
+
+
+    ai        cols, dst_width, -8
+
+outer_loop:
+
+    mov       p_src, src
+    mov       p_dst, dst
+    
+    mov       rows, dst_height
+
+inner_loop:
+
+    lqd       q0, 0(p_src)
+    lqx       q1, src_width, p_src
+    lqx       q2, ofs_width, p_src
+    
+    shufb     q1, q1, q2, shuf_CDab
+    
+    stqd      q0, 0(p_dst)
+    stqx      q1, src_width, p_dst
+    
+    a         p_src, p_src, src_step_inner
+    a         p_dst, p_dst, dst_step_inner
+    
+    ai        rows, rows, -2
+    brnz      rows, inner_loop
+
+
+    ai        src, src, 16
+    ai        dst, dst, 16
+    
+    ai        cols, cols, -16
+    brnz      cols, outer_loop
+    
+
+
+    mov       p_src, src
+    mov       p_dst, dst
+    
+    mov       rows, dst_height
+    
+epilogue_loop:
+
+    lqd       q0, 0x00(p_src)
+    lqd       q1, 0x10(p_src)
+    
+    shufb     q0, q0, q1, shuf_ABab
+    
+    stqd      q0, 0(p_dst)
+    
+    a         p_src, p_src, src_step_inner
+    a         p_dst, p_dst, dst_step_inner
+    
+    ai        rows, rows, -2
+    brnz      rows, epilogue_loop
+
+
+
+.endfunc
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void RefineOutcodesEvenAsm(u8 *dst, u32 dst_width, u32 dst_height, u8 *src, u32 src_width, u32 src_height, i32 c_orig, i32 r_orig)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// {
+//   for (i32 r_dest=0; r_dest<nr_dest; r_dest++)
+//   {
+//     for (i32 c_dest=r_dest&1; c_dest<nc_dest; c_dest+=2)
+//     {
+//       i32 i_dest = r_dest * nc_dest + c_dest;
+//       i32 c_src  = c_orig + ((r_dest + c_dest) >> 1);
+//       i32 r_src  = r_orig + ((r_dest - c_dest) >> 1);
+//       i32 i_src  = r_src * nc_src + c_src;
+//       if (c_src>=0 && c_src<nc_src && r_src>=0 && r_src<nr_src)
+//       {
+//         // source point inside source grid: copy outcode to dest point
+//         dest[i_dest] = src[i_src];
+//       }
+//       else
+//       {
+//         // source point outside source grid: cull dest point
+//         dest[i_dest] = 0x80;
+//       }
+//     }
+//   }
+// }
+
+.cfunc void RefineOutcodesEvenAsm(u8 *dst, u32 dst_width, u32 dst_height, u8 *src, u32 src_width, u32 src_height, i32 c_orig, i32 r_orig)
+
+    .reg      shuf0, shuf1, shuf2, shuf3, shuf4, shuf5, shuf6
+    .reg      p_src, p_dst, rows, cols, src_step_inner, dst_step_inner, src_step_outer
+    .reg      byte, shuf, minus7, cnt, shuf_ABCD, shuf_DDDDDDDDDDDDDDDD, shuf_ABCDEFgh, shuf_ABCDEFGh
+    .reg      o0, o1, o2, o3, o4, o5, o6, o7, o8, oL, oR, ou, ol
+    .reg      cull, ofs, shuf_BBBBBBBB, x0, x1, y0, y1, mask, X, Y, x, y
+    
+    .extern   shuf_ABCD
+    lqa       shuf_ABCD, shuf_ABCD
+    ilh       shuf_DDDDDDDDDDDDDDDD, 0x0303
+    il128     shuf_ABCDEFgh, "ABCDEFgh"
+    il128     shuf_ABCDEFGh, "ABCDEFGh"
+    il        minus7, -7
+
+    // init shufs
+    il128     shuf0, "aBCDEFGH"
+    il128     shuf1, "abCDEFGH"
+    il128     shuf2, "abcDEFGH"
+    il128     shuf3, "abcdEFGH"
+    il128     shuf4, "abcdeFGH"
+    il128     shuf5, "abcdefGH"
+    il128     shuf6, "abcdefgH"
+
+
+    ilh       cull, 0x8080
+    ilh       shuf_BBBBBBBB, 0x0203
+
+    il128     ofs, 0x00000001_00020003_00040005_00060007
+
+    shufb     X, c_orig, c_orig, shuf_BBBBBBBB
+    ah        X, X, ofs
+    
+    shufb     Y, r_orig, r_orig, shuf_BBBBBBBB
+    sfh       Y, ofs, Y
+    
+    il        x0, 0
+    il        y0, 0
+    shufb     x1, src_width,  src_width,  shuf_BBBBBBBB
+    shufb     y1, src_height, src_height, shuf_BBBBBBBB
+
+
+    // offset src according to source origin
+    a         src, src, c_orig
+    mpya      src, src_width, r_orig, src
+
+    // set pointer increments
+    ai        src_step_inner, src_width, 1
+    a         dst_step_inner, dst_width, dst_width
+    sfi       src_step_outer, src_width, 1
+    shli      src_step_outer, src_step_outer, 3
+    
+
+    // init outer loop count
+    mov       cols, dst_width
+
+outer_loop:
+
+    // init src pointer for prologue
+    mpya      p_src, src_step_inner, minus7, src
+
+    // init prologue count
+    il        cnt, 7
+    
+inner_prologue:
+
+    // get alignment shuffle
+    andi      byte, p_src, 0xF
+    shufb     byte, byte, byte, shuf_DDDDDDDDDDDDDDDD
+    a         shuf, shuf_ABCD, byte
+
+    // get next row of input
+    lqd       oL, 0x00(p_src)
+    lqd       oR, 0x10(p_src)
+    shufb     o8, oL, oR, shuf
+    
+    // advance queue (shearing as we go)
+    shufb     o1, o2, o8, shuf1
+    shufb     o2, o3, o8, shuf2
+    shufb     o3, o4, o8, shuf3
+    shufb     o4, o5, o8, shuf4
+    shufb     o5, o6, o8, shuf5
+    shufb     o6, o7, o8, shuf6
+    rotqbyi   o7, o8, 0
+
+    // step src
+    a         p_src, p_src, src_step_inner    // src_width + 1 
+
+    // loop
+    ai        cnt, cnt, -1
+    brnz      cnt, inner_prologue
+    
+
+
+    // copy outer loop values
+    mov       p_dst, dst
+    mov       x, X
+    mov       y, Y
+
+    // init inner loop count    
+    mov       rows, dst_height
+
+inner_loop:
+
+    // get alignment shuffle
+    andi      byte, p_src, 0xF
+    shufb     byte, byte, byte, shuf_DDDDDDDDDDDDDDDD
+    a         shuf, shuf_ABCD, byte
+
+    // get next row of input
+    lqd       oL, 0x00(p_src)
+    lqd       oR, 0x10(p_src)
+    shufb     o8, oL, oR, shuf
+    
+    // advance queue (shearing as we go)
+    shufb     o0, o1, o8, shuf0
+    shufb     o1, o2, o8, shuf1
+    shufb     o2, o3, o8, shuf2
+    shufb     o3, o4, o8, shuf3
+    shufb     o4, o5, o8, shuf4
+    shufb     o5, o6, o8, shuf5
+    shufb     o6, o7, o8, shuf6
+    rotqbyi   o7, o8, 0
+    
+    // masking
+    cgth      mask, y0, y
+    selb      o0, o0, cull, mask
+    
+    cgth      mask, y1, y
+    selb      o0, cull, o0, mask
+    
+    cgth      mask, x0, x
+    selb      ou, o0, cull, mask
+    
+    cgth      mask, x1, x
+    selb      ou, cull, ou, mask
+    
+    ahi       x, x, 1
+    
+    cgth      mask, x0, x
+    selb      ol, o0, cull, mask
+    
+    cgth      mask, x1, x
+    selb      ol, cull, ol, mask
+    
+    // store 2 rows of output
+    stqd      ou, 0x00(p_dst)
+    stqx      ol, dst_width, p_dst
+    
+    // step inner
+    a         p_src, p_src, src_step_inner    // src_width + 1 
+    a         p_dst, p_dst, dst_step_inner    // 2 * dst_width
+    ahi       y,  y,  1
+
+    // loop inner    
+    ai        rows, rows, -2
+    brnz      rows, inner_loop
+    
+    // step outer
+    a         src, src, src_step_outer        // (1 - src_width) * 8 
+    ai        dst, dst, 16
+    ahi       X, X,  8
+    ahi       Y, Y, -8
+    
+    // loop outer
+    ai        cols, cols, -16
+    brnz      cols, outer_loop 
+     
+
+
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void RefineOutcodesOddAsm(u8 *dst, u32 dst_width, u32 dst_height, u8 *src, u32 src_width, u32 src_height, i32 c_orig, i32 r_orig)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// {
+//   for (i32 r_dest=0; r_dest<nr_dest; r_dest++)
+//   {
+//     for (i32 c_dest=r_dest&1; c_dest<nc_dest; c_dest+=2)
+//     {
+//       i32 i_dest = r_dest * nc_dest + c_dest;
+//       i32 c_src  = c_orig + ((c_dest - r_dest) >> 1);
+//       i32 r_src  = r_orig + ((c_dest + r_dest) >> 1);
+//       i32 i_src  = r_src * nc_src + c_src;
+//       if (c_src>=0 && c_src<nc_src && r_src>=0 && r_src<nr_src)
+//       {
+//         // source point inside source grid: copy outcode to dest point
+//         dest[i_dest] = src[i_src];
+//       }
+//       else
+//       {
+//         // source point outside source grid: cull dest point
+//         dest[i_dest] = 0x80;
+//       }
+//     }
+//   }
+// }
+
+.cfunc void RefineOutcodesOddAsm(u8 *dst, u32 dst_width, u32 dst_height, u8 *src, u32 src_width, u32 src_height, i32 c_orig, i32 r_orig)
+
+    .reg      shuf0, shuf1, shuf2, shuf3, shuf4, shuf5, shuf6, shuf7
+    .reg      p_src, p_dst, rows, cols, src_step_inner, dst_step_inner, src_step_outer, dst_step_outer
+    .reg      byte, shuf, minus8, cnt, shuf_ABCD, shuf_DDDDDDDDDDDDDDDD
+    .reg      o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, oL, oR, ou, ol
+    .reg      cull, ofs, shuf_BBBBBBBB, x0, x1, y0, y1, mask, X, Y, x, y
+    
+    .extern   shuf_ABCD
+    lqa       shuf_ABCD, shuf_ABCD
+    ilh       shuf_DDDDDDDDDDDDDDDD, 0x0303
+    il        minus8, -8
+
+    // init shufs
+    il128     shuf0, "ABCDEFGHIJKLMNOp"
+    il128     shuf1, "ABCDEFGHIJKLMnop"
+    il128     shuf2, "ABCDEFGHIJKlmnop"
+    il128     shuf3, "ABCDEFGHIjklmnop"
+    il128     shuf4, "ABCDEFGhijklmnop"
+    il128     shuf5, "ABCDEfghijklmnop"
+    il128     shuf6, "ABCdefghijklmnop"
+    il128     shuf7, "Abcdefghijklmnop"
+
+    ilh       cull, 0x8080
+    ilh       shuf_BBBBBBBB, 0x0203
+
+    il128     ofs, 0x00000001_00020003_00040005_00060007
+
+    shufb     X, c_orig, c_orig, shuf_BBBBBBBB
+    ah        X, X, ofs
+    
+    shufb     Y, r_orig, r_orig, shuf_BBBBBBBB
+    ah        Y, Y, ofs
+    
+    il        x0, 0
+    il        y0, 0
+    shufb     x1, src_width,  src_width,  shuf_BBBBBBBB
+    shufb     y1, src_height, src_height, shuf_BBBBBBBB
+
+
+    // offset src according to source origin
+    a         src, src, c_orig
+    mpya      src, src_width, r_orig, src
+
+    // set pointer increments
+    ai        src_step_inner, src_width, -1
+    a         dst_step_inner, dst_width, dst_width
+    ai        src_step_outer, src_width, 1
+    shli      src_step_outer, src_step_outer, 3
+    il        dst_step_outer, 16
+    
+
+    // init outer loop count
+    mov       cols, dst_width
+
+outer_loop:
+
+    // init src pointer for prologue
+    mov       p_src, src
+
+    // init prologue count
+    il        cnt, 8
+    
+inner_prologue:
+
+    // get alignment shuffle
+    andi      byte, p_src, 0xF
+    shufb     byte, byte, byte, shuf_DDDDDDDDDDDDDDDD
+    a         shuf, shuf_ABCD, byte
+
+    // get next row of input
+    lqd       oL, 0x00(p_src)
+    lqd       oR, 0x10(p_src)
+    shufb     o9, oL, oR, shuf
+    
+    // advance queue (shearing as we go)
+    shufb     o1, o2, o9, shuf1
+    shufb     o2, o3, o9, shuf2
+    shufb     o3, o4, o9, shuf3
+    shufb     o4, o5, o9, shuf4
+    shufb     o5, o6, o9, shuf5
+    shufb     o6, o7, o9, shuf6
+    shufb     o7, o8, o9, shuf7
+    rotqbyi   o8, o9, 0
+
+    // step src
+    a         p_src, p_src, src_step_inner    // src_width + 1 
+
+    // loop
+    ai        cnt, cnt, -1
+    brnz      cnt, inner_prologue
+    
+
+
+
+    // copy outer loop values
+    mov       p_dst, dst
+    mov       x, X
+    mov       y, Y
+
+    // init inner loop count    
+    mov       rows, dst_height
+
+inner_loop:
+
+    // get alignment shuffle
+    andi      byte, p_src, 0xF
+    shufb     byte, byte, byte, shuf_DDDDDDDDDDDDDDDD
+    a         shuf, shuf_ABCD, byte
+
+    // get next row of input
+    lqd       oL, 0x00(p_src)
+    lqd       oR, 0x10(p_src)
+    shufb     o9, oL, oR, shuf
+    
+    // advance queue (shearing as we go)
+    shufb     o0, o1, o9, shuf0 
+    shufb     o1, o2, o9, shuf1
+    shufb     o2, o3, o9, shuf2
+    shufb     o3, o4, o9, shuf3
+    shufb     o4, o5, o9, shuf4
+    shufb     o5, o6, o9, shuf5
+    shufb     o6, o7, o9, shuf6
+    shufb     o7, o8, o9, shuf7
+    rotqbyi   o8, o9, 0
+
+    // masking
+    cgth      mask, x0, x
+    selb      o0, o0, cull, mask
+    
+    cgth      mask, x1, x
+    selb      o0, cull, o0, mask
+    
+    cgth      mask, y0, y
+    selb      ou, o0, cull, mask
+    
+    cgth      mask, y1, y
+    selb      ou, cull, ou, mask
+    
+    ahi       y, y, 1
+    
+    cgth      mask, y0, y
+    selb      ol, o0, cull, mask
+    
+    cgth      mask, y1, y
+    selb      ol, cull, ol, mask
+    
+    // store 2 rows of output
+    stqd      ou, 0x00(p_dst)
+    stqx      ol, dst_width, p_dst
+    
+    // step inner
+    a         p_src, p_src, src_step_inner    // src_width + 1 
+    a         p_dst, p_dst, dst_step_inner    // 2 * dst_width
+    ahi       x, x, -1
+
+    // loop inner    
+    ai        rows, rows, -2
+    brnz      rows, inner_loop
+    
+    // step outer
+    a         src, src, src_step_outer        // (1 - src_width) * 8 
+    a         dst, dst, dst_step_outer        // 16 
+    ahi       X, X, 8
+    ahi       Y, Y, 8
+    
+    // loop outer
+    ai        cols, cols, -16
+    brnz      cols, outer_loop 
+     
+
+
+.endfunc
+

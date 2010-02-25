@@ -1,0 +1,1649 @@
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_MultiplyComplexArraysAsm(f32 *z, f32 *w, u32 cnt)
+// 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_MultiplyComplexArraysAsm(f32 *z, f32 *w, u32 cnt)
+
+    .reg      z0z1, z2z3, w0w1, w2w3, x03, y03, u03, v03, re03, im03
+    .reg      shuf_ACac, shuf_BDbd, shuf_AaBb, shuf_CcDd
+    .extern   shuf_ACac, shuf_BDbd, shuf_AaBb, shuf_CcDd
+    
+    lqa       shuf_ACac, shuf_ACac
+    lqa       shuf_BDbd, shuf_BDbd
+    lqa       shuf_AaBb, shuf_AaBb
+    lqa       shuf_CcDd, shuf_CcDd
+
+loop:
+
+    lqd       z0z1, 0x00(z)
+    lqd       z2z3, 0x10(z)
+    
+    lqd       w0w1, 0x00(w)
+    lqd       w2w3, 0x10(w)
+    
+    shufb     x03, z0z1, z2z3, shuf_ACac
+    shufb     y03, z0z1, z2z3, shuf_BDbd
+    
+    shufb     u03, w0w1, w2w3, shuf_ACac
+    shufb     v03, w0w1, w2w3, shuf_BDbd
+
+    fm        re03, x03, u03
+    fnms      re03, y03, v03, re03
+    
+    fm        im03, x03, v03
+    fma       im03, y03, u03, im03
+    
+    shufb     z0z1, re03, im03, shuf_AaBb
+    shufb     z2z3, re03, im03, shuf_CcDd
+    
+    ai        z, z, 0x20
+    ai        w, w, 0x20
+    
+    stqd      z0z1, -0x20(z) 
+    stqd      z2z3, -0x10(z)
+    
+    ai        cnt, cnt, -4
+    brnz      cnt, loop 
+
+
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_DecompressComplexArray(Complex z[], Complex palette[], u8 map[], u32 cnt)
+// {
+//   for (u32 i=0; i<cnt; i++)
+//   {
+//     u8 idx = *map++;
+//     *z++ = palette[idx];
+//   }
+// }
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_DecompressComplexArrayAsm(f32 *dst, f32 *palette, u8 *map, u32 cnt) 
+
+    .reg      ofs, ofs0, ofs1, indices, z0, z1, z, mask_0011, word_0x7F8
+
+    fsmbi     mask_0011, 0x00FF
+    il        word_0x7F8, 0x7F8
+    
+    mpyi      ofs, cnt, -8
+    sf        dst, ofs, dst
+
+loop: // (8,8) per 2 complex numbers decompressed
+
+    lqd       indices, 0(map)
+    rotqby    indices, indices, map
+    
+    rotmi     ofs0, indices, -21
+    and       ofs0, ofs0, word_0x7F8
+    lqx       z0, palette, ofs0
+    rotqby    z0, z0, ofs0      
+    
+    rotmi     ofs1, indices, -13
+    and       ofs1, ofs1, word_0x7F8
+    lqx       z1, palette, ofs1
+    ai        ofs1, ofs1, 8
+    rotqby    z1, z1, ofs1      
+    
+    selb      z, z0, z1, mask_0011
+    stqx      z, dst, ofs                         
+                         
+    ai        map, map, 2
+    ai        ofs, ofs, 16
+    
+    brnz      ofs, loop
+
+.endfunc    
+    
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_DecompressComplexArraySeparate(f32 *x, f32 *y, Complex *palette, u8 *map, u32 cnt)
+// {
+//   for (u32 i=0; i<cnt; i++)
+//   {
+//     u8 idx = *map++;
+//     *x++ = palette[idx].re;
+//     *y++ = palette[idx].im;
+//   }
+// }
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_DecompressComplexArraySeparate(f32 *x, f32 *y, f32 *palette, u8 *map, u32 cnt) 
+
+    .reg      indices, ofs, ofs0, ofs1, ofs2, ofs3, z0, z1, z2, z3, z0z1, z2z3, word_0x7F8, px, py, mask_0011
+    
+    .reg      shuf_ABab, shuf_ACac, shuf_BDbd
+    .extern   shuf_ABab, shuf_ACac, shuf_BDbd
+    
+    lqa       shuf_ABab, shuf_ABab
+    lqa       shuf_ACac, shuf_ACac
+    lqa       shuf_BDbd, shuf_BDbd
+    
+    fsmbi     mask_0011, 0x00FF
+    il        word_0x7F8, 0x7F8
+    
+    mpyi      ofs, cnt, -4
+    sf        px, ofs, x
+    sf        py, ofs, y
+
+loop: // (10,17) per 4 complex numbers decompressed
+
+    lqd       indices, 0(map)
+    rotqby    indices, indices, map
+    
+    roti      ofs0, indices, -21
+    and       ofs0, ofs0, word_0x7F8
+    lqx       z0, palette, ofs0
+    rotqby    z0, z0, ofs0
+    
+    roti      ofs1, indices, -13
+    and       ofs1, ofs1, word_0x7F8
+    lqx       z1, palette, ofs1
+    rotqby    z1, z1, ofs1
+    
+    roti      ofs2, indices, -5
+    and       ofs2, ofs2, word_0x7F8
+    lqx       z2, palette, ofs2
+    rotqby    z2, z2, ofs2
+    
+    roti      ofs3, indices, 3
+    and       ofs3, ofs3, word_0x7F8
+    lqx       z3, palette, ofs3
+    rotqby    z3, z3, ofs3
+    
+    
+    // z0 = (x0,y0,??,??)
+    // z1 = (x1,y1,??,??)
+    // z2 = (x2,y2,??,??)
+    // z3 = (x3,y3,??,??)
+    
+    shufb     z0z1, z0, z1, shuf_ABab
+    shufb     z2z3, z2, z3, shuf_ABab
+    
+    // z0z1 = (x0,y0,x1,y1)
+    // z2z3 = (x2,y2,y3,y3)
+    
+    shufb     x, z0z1, z2z3, shuf_ACac
+    shufb     y, z0z1, z2z3, shuf_BDbd
+    
+    // x = (x0,x1,x2,x3)
+    // y = (y0,y1,y2,y3)
+    
+    stqx      x, px, ofs                         
+    stqx      y, py, ofs                         
+                         
+    ai        map, map, 4
+    ai        ofs, ofs, 16
+    
+    brnz      ofs, loop
+
+.endfunc    
+    
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_ZeroRectangleAsm(Complex *dst, u32 cnt)
+//
+// dst is qword aligned
+// cnt is either 64 (half width) or 128 (full width) 
+// 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_ZeroRectangleAsm(f32 *dst, u32 cnt)
+
+    .reg      zero, cmp, dst_inc, dst_xor 
+
+    il        zero, 0
+                                          // cnt=64   cnt=128
+    ceqi      cmp, cnt, 128               // 0        -1
+    andi      dst_inc, cmp, -192          // 0        -192
+    ai        dst_inc, dst_inc, 256       // 256      64
+    andi      dst_xor, cmp, 128           // 0        128
+
+    
+loop:
+
+    stqd      zero, 0x00(dst)
+    stqd      zero, 0x10(dst)      
+    stqd      zero, 0x20(dst)      
+    stqd      zero, 0x30(dst)      
+    
+    a         dst, dst, dst_inc
+
+    xor       dst_inc, dst_inc, dst_xor    
+
+    ai        cnt, cnt, -8
+    brnz      cnt, loop
+
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_ReadRectangleAsm(Complex *dst, i16 *src, u32 cnt)
+//
+// src & dst are qword aligned
+// cnt is either 64 (half width) or 128 (full width) 
+// 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_ReadRectangleAsm(f32 *dst, i16 *src, u32 cnt)
+
+    .reg      re, im, z0z1, z2z3, z4z5, z6z7, cmp, src_inc, dst_inc, dst_xor 
+    .reg      shuf_A0a0B0b0, shuf_C0c0D0d0, shuf_E0e0F0f0, shuf_G0g0H0h0
+
+    il128     shuf_A0a0B0b0, 0x00018080_10118080_02038080_12138080    
+    il128     shuf_C0c0D0d0, 0x04058080_14158080_06078080_16178080    
+    il128     shuf_E0e0F0f0, 0x08098080_18198080_0A0B8080_1A1B8080    
+    il128     shuf_G0g0H0h0, 0x0C0D8080_1C1D8080_0E0F8080_1E1F8080
+        
+                                          // cnt=64   cnt=128
+    ceqi      cmp, cnt, 128               // 0        -1
+    andi      src_inc, cmp, 16            // 0        16
+    sfi       src_inc, src_inc, 32        // 32       16
+    andi      dst_inc, cmp, -192          // 0        -192
+    ai        dst_inc, dst_inc, 256       // 256      64
+    andi      dst_xor, cmp, 128           // 0        128
+    
+loop:
+
+    lqd       re, 0x000(src)              // load 8 real values from heightmap
+    lqd       im, 0x100(src)              // load 8 imaginary values from heightmap
+    
+    shufb     z0z1, re, im, shuf_A0a0B0b0 // interleave real & imaginary; pad with zeros      
+    shufb     z2z3, re, im, shuf_C0c0D0d0      
+    shufb     z4z5, re, im, shuf_E0e0F0f0      
+    shufb     z6z7, re, im, shuf_G0g0H0h0      
+    
+    csflt     z0z1, z0z1, 31              // convert to float     
+    csflt     z2z3, z2z3, 31
+    csflt     z4z5, z4z5, 31
+    csflt     z6z7, z6z7, 31
+    
+    stqd      z0z1, 0x00(dst)             // store
+    stqd      z2z3, 0x10(dst)      
+    stqd      z4z5, 0x20(dst)      
+    stqd      z6z7, 0x30(dst)      
+    
+    a         src, src, src_inc
+    a         dst, dst, dst_inc
+
+    xor       dst_inc, dst_inc, dst_xor    
+
+    ai        cnt, cnt, -8
+    brnz      cnt, loop
+
+.endfunc
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_WriteRectangleCentralAsm(i16 *dst, f32 *src, u32 cnt)
+//
+// used for: central tile, above/below neighbour
+// cnt is 16*16 (central tile) or 16*4 (above/below neighbour)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_WriteRectangleCentralAsm(i16 *dst, f32 *src, u32 cnt)
+
+    .reg      z0z1, z2z3, z4z5, z6z7, cmp, ofs_im, re0123, im0123, re4567, im4567, re, im, src_inc, mask_0011, hword_0x8000
+    
+    .reg      shuf_AEae0000, shuf_CGcg0000, shuf_0000AEae, shuf_0000CGcg
+    .extern   shuf_AEae0000, shuf_CGcg0000, shuf_0000AEae, shuf_0000CGcg
+    
+    lqa       shuf_AEae0000, shuf_AEae0000
+    lqa       shuf_CGcg0000, shuf_CGcg0000
+    lqa       shuf_0000AEae, shuf_0000AEae
+    lqa       shuf_0000CGcg, shuf_0000CGcg
+    
+    fsmbi     mask_0011, 0x00FF
+    ilh       hword_0x8000, 0x8000
+    
+                                          // cnt=64   cnt=256
+    ceqi      cmp, cnt, 256               // 0        -1
+    andi      ofs_im, cmp, 256            // 0        256
+    ai        ofs_im, ofs_im, 256         // 256      512
+    
+    il        src_inc, 64
+
+loop:
+
+    lqd       z0z1, 0x00(src)
+    lqd       z2z3, 0x10(src)
+    lqd       z4z5, 0x20(src)
+    lqd       z6z7, 0x30(src)
+    
+    cflts     z0z1, z0z1, 31
+    cflts     z2z3, z2z3, 31
+    cflts     z4z5, z4z5, 31
+    cflts     z6z7, z6z7, 31
+    
+    shufb     re0123, z0z1, z2z3, shuf_AEae0000
+    shufb     im0123, z0z1, z2z3, shuf_CGcg0000
+    shufb     re4567, z4z5, z6z7, shuf_0000AEae
+    shufb     im4567, z4z5, z6z7, shuf_0000CGcg
+    
+    selb      re, re0123, re4567, mask_0011
+    selb      im, im0123, im4567, mask_0011
+    
+    ceqh      cmp, re, hword_0x8000
+    sfh       re, cmp, re
+    ceqh      cmp, im, hword_0x8000
+    sfh       im, cmp, im
+    
+    stqd      re, 0x000(dst)
+    stqx      im, ofs_im, dst
+    
+    a         src, src, src_inc
+    ai        dst, dst, 0x10
+    
+    xori      src_inc, src_inc, 128
+    
+    ai        cnt, cnt, -8
+    brnz      cnt, loop
+
+.endfunc
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_WriteRectangleCentralSeparate(i16 *dst, f32 *x, f32 *y, u32 cnt)
+//
+// used for: central tile, above/below neighbour
+// cnt is 16*16 (central tile) or 16*4 (above/below neighbour)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_WriteRectangleCentralSeparate(i16 *dst, f32 *x, f32 *y, u32 cnt)
+
+    .reg      cmp, ofs_im, re0123, im0123, re4567, im4567, re, im, src_inc, mask_0011, hword_0x8000
+    
+    .reg      shuf_ACEGaceg
+    .extern   shuf_ACEGaceg
+    
+    lqa       shuf_ACEGaceg, shuf_ACEGaceg
+    
+    fsmbi     mask_0011, 0x00FF
+    ilh       hword_0x8000, 0x8000
+    
+                                          // cnt=64   cnt=256
+    ceqi      cmp, cnt, 256               // 0        -1
+    andi      ofs_im, cmp, 256            // 0        256
+    ai        ofs_im, ofs_im, 256         // 256      512
+    
+    il        src_inc, 32
+
+loop:
+
+    lqd       re0123, 0x00(x)
+    lqd       re4567, 0x10(x)
+    lqd       im0123, 0x00(y)
+    lqd       im4567, 0x10(y)
+    
+    cflts     re0123, re0123, 31
+    cflts     re4567, re4567, 31
+    cflts     im0123, im0123, 31
+    cflts     im4567, im4567, 31
+    
+    shufb     re, re0123, re4567, shuf_ACEGaceg
+    shufb     im, im0123, im4567, shuf_ACEGaceg
+    
+    ceqh      cmp, re, hword_0x8000
+    sfh       re, cmp, re
+    ceqh      cmp, im, hword_0x8000
+    sfh       im, cmp, im
+    
+    stqd      re, 0x000(dst)
+    stqx      im, ofs_im, dst
+    
+    a         x, x, src_inc
+    a         y, y, src_inc
+    ai        dst, dst, 0x10
+    
+    xori      src_inc, src_inc, 64
+    
+    ai        cnt, cnt, -8
+    brnz      cnt, loop
+
+.endfunc
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_WriteRectangleAlongsideAsm(i16 *dst, f32 *src, u32 cnt)
+//
+// used for: left/right neighbour (4x8)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_WriteRectangleAlongsideAsm(i16 *dst, f32 *src, u32 cnt)
+
+    .reg      z0z1, z2z3, re, im, mask, hword_0x8000, cmp
+    
+    .reg      shuf_AEaeAEae, shuf_CGcgCGcg
+    .extern   shuf_AEaeAEae, shuf_CGcgCGcg
+    
+    lqa       shuf_AEaeAEae, shuf_AEaeAEae 
+    lqa       shuf_CGcgCGcg, shuf_CGcgCGcg
+    
+                                          // left         right
+    fsmbi     mask, 0xFF00                // (-1,-1,0,0)  (-1,-1,0,0)
+    rotqby    mask, mask, dst             // (0,0,-1,-1)  (-1,-1,0,0)
+
+    ilh       hword_0x8000, 0x8000
+    
+loop:
+
+    lqd       z0z1, 0x00(src)
+    lqd       z2z3, 0x10(src)
+    
+    cflts     z0z1, z0z1, 31
+    cflts     z2z3, z2z3, 31
+    
+    shufb     re, z0z1, z2z3, shuf_AEaeAEae
+    shufb     im, z0z1, z2z3, shuf_CGcgCGcg
+
+    and       re, re, mask
+    and       im, im, mask
+    
+    ceqh      cmp, re, hword_0x8000
+    sfh       re, cmp, re
+    ceqh      cmp, im, hword_0x8000
+    sfh       im, cmp, im
+    
+    ai        src, src, 256
+    ai        dst, dst, 32
+    
+    stqd      re, -0x20(dst)
+    stqd      im,  0xE0(dst)
+    
+    ai        cnt, cnt, -4
+    brnz      cnt, loop
+    
+.endfunc
+
+
+    
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_WriteRectangleAlongsideSeparate(i16 *dst, f32 *x, f32 *y, u32 cnt)
+//
+// used for: left/right neighbour (4x8)
+//           corner neighbour (4x4)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_WriteRectangleAdjacentSeparate(i16 *dst, f32 *x, f32 *y, u32 cnt)
+
+    .reg      re, im, re_dst, im_dst, mask, hword_0x8000, cmp, shuf
+    
+    .reg      shuf_ABCDEFGH, shuf_acegaceg
+    .extern   shuf_ABCDEFGH, shuf_acegaceg
+    
+    lqa       shuf_ABCDEFGH, shuf_ABCDEFGH
+    lqa       shuf_acegaceg, shuf_acegaceg
+                                          // left         right
+    fsmbi     mask, 0xFF00                // (-1,-1,0,0)  (-1,-1,0,0)
+    rotqby    mask, mask, dst             // (0,0,-1,-1)  (-1,-1,0,0)
+    
+    selb      shuf, shuf_ABCDEFGH, shuf_acegaceg, mask
+    
+    ilh       hword_0x8000, 0x8000
+    
+loop:
+
+    lqd       re, 0(x)
+    lqd       im, 0(y)
+    
+    cflts     re, re, 31
+    cflts     im, im, 31
+    
+    lqd       re_dst, 0x000(dst)
+    lqd       im_dst, 0x100(dst)
+    
+    shufb     re, re_dst, re, shuf
+    shufb     im, im_dst, im, shuf
+    
+    ceqh      cmp, re, hword_0x8000
+    sfh       re, cmp, re
+    ceqh      cmp, im, hword_0x8000
+    sfh       im, cmp, im
+    
+    ai        x, x, 128
+    ai        y, y, 128
+    ai        dst, dst, 32
+    
+    stqd      re, -0x20(dst)
+    stqd      im,  0xE0(dst)
+    
+    ai        cnt, cnt, -4
+    brnz      cnt, loop
+    
+.endfunc
+
+
+    
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_WriteRectangleCornerAsm(i16 *dst, f32 *src, u32 cnt)
+//
+// used for: corner neighbour
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_WriteRectangleCornerAsm(i16 *dst, f32 *src, u32 cnt)
+
+    .reg      z0z1, z2z3, re, im, mask, hword_0x8000, cmp
+    
+    .reg      shuf_AEaeAEae, shuf_CGcgCGcg
+    .extern   shuf_AEaeAEae, shuf_CGcgCGcg
+    
+    lqa       shuf_AEaeAEae, shuf_AEaeAEae 
+    lqa       shuf_CGcgCGcg, shuf_CGcgCGcg 
+                                          // left         right
+    fsmbi     mask, 0xFF00                // (-1,-1,0,0)  (-1,-1,0,0)
+    rotqby    mask, mask, dst             // (0,0,-1,-1)  (-1,-1,0,0)
+
+    ilh       hword_0x8000, 0x8000
+    
+loop:
+
+    lqd       z0z1, 0x00(src)
+    lqd       z2z3, 0x10(src)
+    
+    cflts     z0z1, z0z1, 31
+    cflts     z2z3, z2z3, 31
+    
+    shufb     re, z0z1, z2z3, shuf_AEaeAEae
+    shufb     im, z0z1, z2z3, shuf_CGcgCGcg
+    
+    and       re, re, mask
+    and       im, im, mask
+    
+    ceqh      cmp, re, hword_0x8000
+    sfh       re, cmp, re
+    ceqh      cmp, im, hword_0x8000
+    sfh       im, cmp, im
+    
+    ai        src, src, 256 
+    ai        dst, dst, 32 
+    
+    stqd      re, -0x20(dst)
+    stqd      im,  0xE0(dst)
+    
+    ai        cnt, cnt, -4
+    brnz      cnt, loop
+    
+.endfunc
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_WriteRectangleCornerSeparate(i16 *dst, f32 *x, f32 *y, u32 cnt)
+//
+// used for: corner neighbour (4x4)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.if 0
+
+.cfunc void R2O_WriteRectangleCornerSeparate(i16 *dst, f32 *x, f32 *y, u32 cnt)
+
+    .reg      re, im, re_dst, im_dst, mask, hword_0x8000, cmp, shuf, shuf_00000000
+    
+    .reg      shuf_ABCDEFGH, shuf_acegaceg
+    .extern   shuf_ABCDEFGH, shuf_acegaceg
+    
+    lqa       shuf_ABCDEFGH, shuf_ABCDEFGH
+    lqa       shuf_acegaceg, shuf_acegaceg
+                                          // left         right
+    fsmbi     mask, 0xFF00                // (-1,-1,0,0)  (-1,-1,0,0)
+    rotqby    mask, mask, dst             // (0,0,-1,-1)  (-1,-1,0,0)
+
+    selb      shuf, shuf_ABCDEFGH, shuf_acegaceg, mask
+    
+    ilh       hword_0x8000, 0x8000
+    
+loop:
+
+    lqd       re, 0(x)
+    lqd       im, 0(y)
+    
+    cflts     re, re, 31
+    cflts     im, im, 31
+    
+    lqd       re_dst, 0x000(dst)
+    lqd       im_dst, 0x100(dst)
+    
+    shufb     re, re_dst, re, shuf
+    shufb     im, im_dst, im, shuf
+    
+    ceqh      cmp, re, hword_0x8000
+    sfh       re, cmp, re
+    ceqh      cmp, im, hword_0x8000
+    sfh       im, cmp, im
+    
+    ai        x, x, 128
+    ai        y, y, 128
+    ai        dst, dst, 32 
+    
+    stqd      re, -0x20(dst)
+    stqd      im,  0xE0(dst)
+    
+    ai        cnt, cnt, -4
+    brnz      cnt, loop
+    
+.endfunc
+
+.endif
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_CopyRealsAsm(f32 *dst, f32 *src, u32 cnt)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_CopyRealsAsm(f32 *dst, f32 *src, u32 cnt)
+
+    .reg      z0z1, z2z3, re, shuf_ACac
+    
+    il128     shuf_ACac, 0x00010203_08090A0B_10111213_18191A1B
+
+loop:
+
+    lqd       z0z1, 0x00(src)
+    lqd       z2z3, 0x10(src)
+    
+    shufb     re, z0z1, z2z3, shuf_ACac
+    
+    ai        src, src, 0x20
+    ai        dst, dst, 0x10
+    
+    stqd      re, -0x10(dst)
+    
+    ai        cnt, cnt, -4
+    brnz      cnt, loop
+    
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// u32 R2O_ThresholdRectangleWidth4Asm(f32 *src, u32 height, f32 threshold)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc u32 R2O_ThresholdRectangleWidth4Asm(f32 *src, u32 height, f32 threshold)
+
+    .reg      shuf_AAAA, shuf_BCDD, a03, b03, a14, dh_dx, dh_dz, cmp_x, cmp_z, cmp
+
+    ila       shuf_AAAA, 0x00010203
+    il128     shuf_BCDD, 0x04050607_08090A0B_0C0D0E0F_0C0D0E0F
+    
+    shufb     threshold, threshold, threshold, shuf_AAAA
+    
+    ai        height, height, -1          // reduce height by 1 to exclude bottom row
+    il        cmp, 0
+    
+    
+loop:
+
+    lqd       a03, 0x00(src)
+    lqd       b03, 0x80(src)
+    
+    shufb     a14, a03, a03, shuf_BCDD    // replicate rightmost column so it won't contribute to diffs
+    
+    fs        dh_dx, a14, a03
+    fs        dh_dz, b03, a03
+    
+    fcmgt     cmp_x, dh_dx, threshold
+    fcmgt     cmp_z, dh_dz, threshold
+    
+    or        cmp, cmp, cmp_x
+    or        cmp, cmp, cmp_z
+    
+    ai        src, src, 0x80
+    
+    ai        height, height, -1
+    brnz      height, loop
+    
+    
+    
+    orx       cmp, cmp
+    andi      cmp, cmp, 1
+    mov       @result, cmp
+
+.endfunc
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// u32 R2O_ThresholdRectangleWidth16Asm(f32 *src, u32 height, f32 threshold)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc u32 R2O_ThresholdRectangleWidth16Asm(f32 *src, u32 height, f32 threshold)
+
+    .reg      cnt, shuf_AAAA, shuf, shuf_w, shuf_ABCd, a03, a47, b03, a14, dh_dx, dh_dz, cmp_x, cmp_z, cmp, src_inc
+
+    il128     shuf,      0x04050607_08090A0B_0C0D0E0F_10111213
+    il128     shuf_w,    0x10111213_10111213_0C0D0E0F_10111213
+    il128     src_inc,   0x00000010_00000010_00000010_00000050
+    il128     shuf_ABCd, 0x00010203_04050607_08090A0B_1C1D1E1F
+    
+    ila       shuf_AAAA, 0x00010203
+    shufb     threshold, threshold, threshold, shuf_AAAA
+
+    ai        height, height, -1          // reduce height by 1 to exclude bottom row
+    shli      cnt, height, 4              // cnt = width * height
+    
+    
+    
+    il        cmp, 0
+    
+loop:
+
+    lqd       a03, 0x00(src)
+    lqd       a47, 0x10(src)
+    lqd       b03, 0x80(src)
+    
+    shufb     a14, a03, a47, shuf
+    shufb     shuf, shuf, shuf_w, shuf_ABCd
+    
+    fs        dh_dx, a14, a03
+    fs        dh_dz, b03, a03
+    
+    fcmgt     cmp_x, dh_dx, threshold
+    fcmgt     cmp_z, dh_dz, threshold
+    
+    or        cmp, cmp, cmp_x
+    or        cmp, cmp, cmp_z
+    
+    a         src, src, src_inc
+    
+    rotqbyi   src_inc,  src_inc, 4
+    rotqbyi   shuf_w,   shuf_w,  4
+    
+    ai        cnt, cnt, -4
+    brnz      cnt, loop
+    
+    
+    
+    orx       cmp, cmp
+    andi      cmp, cmp, 1
+    mov       @result, cmp
+
+.endfunc
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_ClearMemAsm(qword *mem, u32 cnt)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_ClearMemAsm(qword *mem, u32 cnt)
+
+    .reg      zero
+    
+    il        zero, 0
+
+loop:
+
+    stqd      zero, 0(mem)
+    ai        mem, mem, 0x10
+    
+    ai        cnt, cnt, -16
+    brnz      cnt, loop
+    
+.endfunc
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_PostProcessNewHalfAsm(i16 *dst, u32 b_lower)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+/*
+
+0/5   0x0000
+1/5   0x199A
+2/5   0x3333
+3/5   0x4CCD
+4/5   0x6666
+
+
+
+*/
+
+.rodata
+
+offset_table:
+
+    .byte     0x80, 0x70, 0x80, 0x00, 0x00, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80, 0x70, 0x80, 0x70
+    .byte     0x20, 0x00, 0x00, 0x70, 0x80, 0x70, 0x80, 0x70, 0x80, 0x70, 0x80, 0x50, 0x60, 0x30, 0x40, 0x10
+
+scales_table:
+
+    .byte     0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66
+    .byte     0x66, 0x66, 0x4C, 0xCD, 0x4C, 0xCD, 0x4C, 0xCD, 0x4C, 0xCD, 0x4C, 0xCD, 0x4C, 0xCD, 0x4C, 0xCD
+    .byte     0x4C, 0xCD, 0x4C, 0xCD, 0x4C, 0xCD, 0x4C, 0xCD, 0x4C, 0xCD, 0x4C, 0xCD, 0x4C, 0xCD, 0x66, 0x66
+    .byte     0x66, 0x66, 0x4C, 0xCD, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33
+    .byte     0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x4C, 0xCD, 0x66, 0x66
+    .byte     0x66, 0x66, 0x4C, 0xCD, 0x33, 0x33, 0x19, 0x9A, 0x19, 0x9A, 0x19, 0x9A, 0x19, 0x9A, 0x19, 0x9A
+    .byte     0x19, 0x9A, 0x19, 0x9A, 0x19, 0x9A, 0x19, 0x9A, 0x19, 0x9A, 0x33, 0x33, 0x4C, 0xCD, 0x66, 0x66
+    .byte     0x66, 0x66, 0x4C, 0xCD, 0x33, 0x33, 0x19, 0x9A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    .byte     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x19, 0x9A, 0x33, 0x33, 0x4C, 0xCD, 0x66, 0x66
+    
+
+    
+.cfunc void R2O_PostProcessNewHalfAsm(i16 *ptr, u32 b_lower)
+
+    .reg      re, im, cnt, ofs, offsets, offset_table, scales, scales_table, lo, hi, mask
+    
+    ila       offset_table, offset_table
+    ila       scales_table, scales_table
+    
+    shli      ofs, b_lower, 4
+    lqx       offsets, offset_table, ofs
+    
+    fsmbi     mask, 0xCCCC
+    
+    il        cnt, 16
+
+
+loop:
+
+    lqd       re, 0x000(ptr)
+    lqd       im, 0x100(ptr)
+
+    andi      ofs, offsets, 0xF0
+    lqx       scales, scales_table, ofs
+    
+    mpys      lo, re, scales
+    mpyhh     hi, re, scales
+    selb      re, lo, hi, mask
+    
+    mpys      lo, im, scales
+    mpyhh     hi, im, scales
+    selb      im, lo, hi, mask
+    
+    ai        ptr, ptr, 0x10
+    
+    stqd      re, -0x010(ptr)
+    stqd      im,  0x0F0(ptr)
+    
+    rotqbyi   offsets, offsets, 1
+    
+    ai        cnt, cnt, -1
+    brnz      cnt, loop
+
+.endfunc
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_PrepareFftBuffer(f32 *z, i16 *UL, i16 *U0, i16 *UR, i16 *uL, i16 *u0, i16 *uR, i16 *dL, i16 *d0, i16 *dR, i16 *DL, i16 *D0, i16 *DR) 
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_PrepareFftBuffer(f32 *z, i16 *UL, i16 *U0, i16 *UR, i16 *uL, i16 *u0, i16 *uR, i16 *dL, i16 *d0, i16 *dR, i16 *DL, i16 *D0, i16 *DR)
+
+  .reg      srcL, src0, srcR, dst, cnt, src_step, dst_step, re0, re1, re2, re3, im0, im1, im2, im3
+  .reg      z0, z1, z2, z3, z4, z5, z6, z7, z8, z9, zA, zB, zC, zD, zE, zF
+  .reg      shuf_AaaA, shuf_A0a0B0b0, shuf_C0c0D0d0, shuf_E0e0F0f0, shuf_G0g0H0h0, mask_0011
+  .extern   shuf_AaaA, shuf_A0a0B0b0, shuf_C0c0D0d0, shuf_E0e0F0f0, shuf_G0g0H0h0
+  
+  lqa       shuf_AaaA,     shuf_AaaA
+  lqa       shuf_A0a0B0b0, shuf_A0a0B0b0
+  lqa       shuf_C0c0D0d0, shuf_C0c0D0d0
+  lqa       shuf_E0e0F0f0, shuf_E0e0F0f0 
+  lqa       shuf_G0g0H0h0, shuf_G0g0H0h0
+  fsmbi     mask_0011,     0x00FF
+
+
+  // prepare source pointer cycles 
+  shufb     UL,   UL, uL, shuf_AaaA
+  shufb     DL,   DL, dL, shuf_AaaA   
+  selb      srcL, UL, DL, mask_0011   // srcL = (UL, uL, dL, DL)  
+
+  shufb     U0,   U0, u0, shuf_AaaA
+  shufb     D0,   D0, d0, shuf_AaaA
+  selb      src0, U0, D0, mask_0011   // src0 = (U0, u0, d0, D0) 
+
+  shufb     UR,   UR, uR, shuf_AaaA
+  shufb     DR,   DR, dR, shuf_AaaA
+  selb      srcR, UR, DR, mask_0011   // srcR = (UR, uR, dR, DR)
+
+  // dst = (z+0x0000, z+0x0800, z+0x1000, z+0x1800)
+  shufb     z, z, z, shuf_AaaA
+  il128     dst, 0x00000000_00000800_00001000_00001800
+  a         dst, dst, z  
+
+  // one pass per row of fft buffer
+  il        cnt, 32
+  
+  // step values for src & dest: must only update one pointer from each bank
+  fsmbi     src_step, 0xF000
+  andi      dst_step, src_step, 0x100
+  andi      src_step, src_step, 0x020
+  
+loop:
+
+  // load 32 shorts from the real part and 32 shorts from the imaginary part of the tile
+  lqd       re0, 0x010(srcL)
+  lqd       re1, 0x000(src0)
+  lqd       re2, 0x010(src0)
+  lqd       re3, 0x000(srcR)
+
+  lqd       im0, 0x110(srcL)
+  lqd       im1, 0x100(src0)
+  lqd       im2, 0x110(src0)
+  lqd       im3, 0x100(srcR)
+
+  // interleave real and imaginary parts and pad lower 16 bits with zeros
+  shufb     z0, re0, im0, shuf_A0a0B0b0
+  shufb     z1, re0, im0, shuf_C0c0D0d0
+  shufb     z2, re0, im0, shuf_E0e0F0f0
+  shufb     z3, re0, im0, shuf_G0g0H0h0
+
+  shufb     z4, re1, im1, shuf_A0a0B0b0
+  shufb     z5, re1, im1, shuf_C0c0D0d0
+  shufb     z6, re1, im1, shuf_E0e0F0f0
+  shufb     z7, re1, im1, shuf_G0g0H0h0
+
+  shufb     z8, re2, im2, shuf_A0a0B0b0
+  shufb     z9, re2, im2, shuf_C0c0D0d0
+  shufb     zA, re2, im2, shuf_E0e0F0f0
+  shufb     zB, re2, im2, shuf_G0g0H0h0
+
+  shufb     zC, re3, im3, shuf_A0a0B0b0
+  shufb     zD, re3, im3, shuf_C0c0D0d0
+  shufb     zE, re3, im3, shuf_E0e0F0f0
+  shufb     zF, re3, im3, shuf_G0g0H0h0
+
+  // convert to float
+  csflt     z0, z0, 31
+  csflt     z1, z1, 31
+  csflt     z2, z2, 31
+  csflt     z3, z3, 31
+
+  csflt     z4, z4, 31
+  csflt     z5, z5, 31
+  csflt     z6, z6, 31
+  csflt     z7, z7, 31
+
+  csflt     z8, z8, 31
+  csflt     z9, z9, 31
+  csflt     zA, zA, 31
+  csflt     zB, zB, 31
+
+  csflt     zC, zC, 31
+  csflt     zD, zD, 31
+  csflt     zE, zE, 31
+  csflt     zF, zF, 31
+
+  // store 32 complex values (1 row of the fft buffer)
+  stqd      z0, 0x00(dst)
+  stqd      z1, 0x10(dst)
+  stqd      z2, 0x20(dst)
+  stqd      z3, 0x30(dst)
+  stqd      z4, 0x40(dst)
+  stqd      z5, 0x50(dst)
+  stqd      z6, 0x60(dst)
+  stqd      z7, 0x70(dst)
+  stqd      z8, 0x80(dst)
+  stqd      z9, 0x90(dst)
+  stqd      zA, 0xA0(dst)
+  stqd      zB, 0xB0(dst)
+  stqd      zC, 0xC0(dst)
+  stqd      zD, 0xD0(dst)
+  stqd      zE, 0xE0(dst)
+  stqd      zF, 0xF0(dst)
+
+  // step pointers
+  a         srcL, srcL, src_step
+  a         src0, src0, src_step 
+  a         srcR, srcR, src_step 
+  a         dst,  dst,  dst_step  
+  
+  // cycle to next set of pointers
+  rotqbyi   srcL, srcL, 4
+  rotqbyi   src0, src0, 4
+  rotqbyi   srcR, srcR, 4
+  rotqbyi   dst,  dst,  4
+  
+  // loop
+  ai        cnt, cnt, -1
+  brnz      cnt, loop
+  
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_PrepareFftBufferSeparate(f32 *x, f32 *y, i16 *UL, i16 *U0, i16 *UR, i16 *uL, i16 *u0, i16 *uR, i16 *dL, i16 *d0, i16 *dR, i16 *DL, i16 *D0, i16 *DR) 
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_PrepareFftBufferSeparate(f32 *x, f32 *y, i16 *UL, i16 *U0, i16 *UR, i16 *uL, i16 *u0, i16 *uR, i16 *dL, i16 *d0, i16 *dR, i16 *DL, i16 *D0, i16 *DR)
+
+    .reg      srcL, src0, srcR, cnt, src_step, dst_step, re0, re1, re2, re3, im0, im1, im2, im3
+    .reg      x0, x1, x2, x3, x4, x5, x6, x7, y0, y1, y2, y3, y4, y5, y6, y7, ofs
+    .reg      shuf_AaaA, shuf_A0B0C0D0, shuf_E0F0G0H0, mask_0011
+    .extern   shuf_AaaA, shuf_A0B0C0D0, shuf_E0F0G0H0 
+    
+    lqa       shuf_AaaA,     shuf_AaaA
+    lqa       shuf_A0B0C0D0, shuf_A0B0C0D0
+    lqa       shuf_E0F0G0H0, shuf_E0F0G0H0
+    fsmbi     mask_0011,     0x00FF
+   
+   
+    // prepare source pointer cycles 
+    shufb     UL,   UL, uL, shuf_AaaA
+    shufb     DL,   DL, dL, shuf_AaaA   
+    selb      srcL, UL, DL, mask_0011   // srcL = (UL, uL, dL, DL)  
+   
+    shufb     U0,   U0, u0, shuf_AaaA
+    shufb     D0,   D0, d0, shuf_AaaA
+    selb      src0, U0, D0, mask_0011   // src0 = (U0, u0, d0, D0) 
+   
+    shufb     UR,   UR, uR, shuf_AaaA
+    shufb     DR,   DR, dR, shuf_AaaA
+    selb      srcR, UR, DR, mask_0011   // srcR = (UR, uR, dR, DR)
+
+    // (x) = (x+0x0000, x+0x0400, x+0x0800, x+0x0C00)
+    // (y) = (y+0x0000, y+0x0400, y+0x0800, y+0x0C00)
+    shufb     x, x, x, shuf_AaaA
+    shufb     y, y, y, shuf_AaaA
+    il128     ofs, 0x00000000_00000400_00000800_00000C00
+    a         x, x, ofs
+    a         y, y, ofs
+
+    // one pass per row of fft buffer
+    il        cnt, 32
+  
+    // step values for src & dest: must only update one pointer from each bank
+    fsmbi     src_step, 0xF000
+    andi      dst_step, src_step, 0x80
+    andi      src_step, src_step, 0x20
+  
+loop:
+
+    // load 32 shorts from the real part and 32 shorts from the imaginary part of the tile
+    lqd       re0, 0x010(srcL)
+    lqd       re1, 0x000(src0)
+    lqd       re2, 0x010(src0)
+    lqd       re3, 0x000(srcR)
+    
+    lqd       im0, 0x110(srcL)
+    lqd       im1, 0x100(src0)
+    lqd       im2, 0x110(src0)
+    lqd       im3, 0x100(srcR)
+    
+    // pad lower 16 bits with zeros
+    shufb     x0, re0, re0, shuf_A0B0C0D0
+    shufb     x1, re0, re0, shuf_E0F0G0H0
+    shufb     x2, re1, re1, shuf_A0B0C0D0
+    shufb     x3, re1, re1, shuf_E0F0G0H0
+    shufb     x4, re2, re2, shuf_A0B0C0D0
+    shufb     x5, re2, re2, shuf_E0F0G0H0
+    shufb     x6, re3, re3, shuf_A0B0C0D0
+    shufb     x7, re3, re3, shuf_E0F0G0H0
+   
+    shufb     y0, im0, im0, shuf_A0B0C0D0
+    shufb     y1, im0, im0, shuf_E0F0G0H0
+    shufb     y2, im1, im1, shuf_A0B0C0D0
+    shufb     y3, im1, im1, shuf_E0F0G0H0
+    shufb     y4, im2, im2, shuf_A0B0C0D0
+    shufb     y5, im2, im2, shuf_E0F0G0H0
+    shufb     y6, im3, im3, shuf_A0B0C0D0
+    shufb     y7, im3, im3, shuf_E0F0G0H0
+   
+    // convert to float
+    csflt     x0, x0, 31
+    csflt     x1, x1, 31
+    csflt     x2, x2, 31
+    csflt     x3, x3, 31
+    csflt     x4, x4, 31
+    csflt     x5, x5, 31
+    csflt     x6, x6, 31
+    csflt     x7, x7, 31
+                       
+    csflt     y0, y0, 31
+    csflt     y1, y1, 31
+    csflt     y2, y2, 31
+    csflt     y3, y3, 31
+    csflt     y4, y4, 31
+    csflt     y5, y5, 31
+    csflt     y6, y6, 31
+    csflt     y7, y7, 31
+
+    // store 32 real and 32 imaginary values (1 row of the fft buffer)
+    stqd      x0, 0x00(x)
+    stqd      x1, 0x10(x)
+    stqd      x2, 0x20(x)
+    stqd      x3, 0x30(x)
+    stqd      x4, 0x40(x)
+    stqd      x5, 0x50(x)
+    stqd      x6, 0x60(x)
+    stqd      x7, 0x70(x)
+    
+    stqd      y0, 0x00(y)
+    stqd      y1, 0x10(y)
+    stqd      y2, 0x20(y)
+    stqd      y3, 0x30(y)
+    stqd      y4, 0x40(y)
+    stqd      y5, 0x50(y)
+    stqd      y6, 0x60(y)
+    stqd      y7, 0x70(y)
+    
+    // step pointers
+    a         srcL, srcL, src_step
+    a         src0, src0, src_step 
+    a         srcR, srcR, src_step 
+    a         x, x,  dst_step  
+    a         y, y,  dst_step  
+    
+    // cycle to next set of pointers
+    rotqbyi   srcL, srcL, 4
+    rotqbyi   src0, src0, 4
+    rotqbyi   srcR, srcR, 4
+    rotqbyi   x, x, 4
+    rotqbyi   y, y, 4
+    
+    // loop
+    ai        cnt, cnt, -1
+    brnz      cnt, loop
+
+  
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_GatherAndTransformRows(f32 *x, f32 *y, i16 *UL, i16 *U0, i16 *UR, i16 *uL, i16 *u0, i16 *uR, i16 *dL, i16 *d0, i16 *dR, i16 *DL, i16 *D0, i16 *DR) 
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_GatherAndTransformRows(f32 *x, f32 *y, i16 *UL, i16 *U0, i16 *UR, i16 *uL, i16 *u0, i16 *uR, i16 *dL, i16 *d0, i16 *dR, i16 *DL, i16 *D0, i16 *DR)
+
+    .reg      srcL, src0, srcR, cnt, src_step, dst_step, re0, re1, re2, re3, im0, im1, im2, im3, ofs
+    .reg      shuf_AaaA, shuf_A0B0C0D0, shuf_E0F0G0H0, mask_0011
+    .extern   shuf_AaaA, shuf_A0B0C0D0, shuf_E0F0G0H0 
+
+
+
+
+
+    .reg      x0123, x4567, x89AB, xCDEF, xGHIJ, xKLMN, xOPQR, xSTUV
+    .reg      y0123, y4567, y89AB, yCDEF, yGHIJ, yKLMN, yOPQR, ySTUV
+    .reg      x0246, x8ACE, xGIKM, xOQSU, x1357, x9BDF, xHJLN, xPRTV
+    .reg      y0246, y8ACE, yGIKM, yOQSU, y1357, y9BDF, yHJLN, yPRTV
+    .reg      x048C, xGKOS, x159D, xHLPT, x26AE, xIMQU, x37BF, xJNRV
+    .reg      y048C, yGKOS, y159D, yHLPT, y26AE, yIMQU, y37BF, yJNRV
+    .reg      x08GO, x19HP, x2AIQ, x3BJR, x4CKS, x5DLT, x6EMU, x7FNV
+    .reg      y08GO, y19HP, y2AIQ, y3BJR, y4CKS, y5DLT, y6EMU, y7FNV
+    .reg      x0G1H, x2I3J, x4K5L, x6M7N, x8O9P, xAQBR, xCSDT, xEUFV
+    .reg      y0G1H, y2I3J, y4K5L, y6M7N, y8O9P, yAQBR, yCSDT, yEUFV
+    
+    .reg      X0123, X4567, X89AB, XCDEF, XGHIJ, XKLMN, XOPQR, XSTUV
+    .reg      Y0123, Y4567, Y89AB, YCDEF, YGHIJ, YKLMN, YOPQR, YSTUV
+    .reg      X0246, X8ACE, XGIKM, XOQSU, X1357, X9BDF, XHJLN, XPRTV
+    .reg      Y0246, Y8ACE, YGIKM, YOQSU, Y1357, Y9BDF, YHJLN, YPRTV
+    .reg      X048C, XGKOS, X159D, XHLPT, X26AE, XIMQU, X37BF, XJNRV
+    .reg      Y048C, YGKOS, Y159D, YHLPT, Y26AE, YIMQU, Y37BF, YJNRV
+    .reg      X08GO, X19HP, X2AIQ, X3BJR, X4CKS, X5DLT, X6EMU, X7FNV
+    .reg      Y08GO, Y19HP, Y2AIQ, Y3BJR, Y4CKS, Y5DLT, Y6EMU, Y7FNV
+    .reg      X0G1H, X2I3J, X4K5L, X6M7N, X8O9P, XAQBR, XCSDT, XEUFV
+    .reg      Y0G1H, Y2I3J, Y4K5L, Y6M7N, Y8O9P, YAQBR, YCSDT, YEUFV
+    
+    .reg      Fx, Fy
+    
+    .reg      c0044
+    .reg      t0123, t4567, t0022, t4466, t4422
+    .reg      c11XX, c22XX, cYYZZ
+    .reg      C0055, C0077
+    .reg      K4422
+    
+    .reg      shuf_AaBb, shuf_CcDd
+    .extern   shuf_AaBb, shuf_CcDd
+    
+    lqa       shuf_AaBb, shuf_AaBb
+    lqa       shuf_CcDd, shuf_CcDd
+    
+    il128     c0044, 0x3F800000_3F800000_3F3504F3_3F3504F3
+    il128     t0123, 0x00000000_3E4BAFAF_3ED413CD_3F2B0DC1
+    il128     t4567, 0x3F800000_3FBF90C7_401A827A_40A0DFF7
+    il128     t0022, 0x00000000_00000000_3ED413CD_3ED413CD
+    il128     t4466, 0x3F800000_3F800000_401A827A_401A827A
+    il128     t4422, 0x3F800000_3F800000_3ED413CD_3ED413CD
+
+    il128     c11XX, 0x3F7B14BE_3F7B14BE_3F318A86_3F318A86      // c11XX = c1111*c0044
+    il128     c22XX, 0x3F6C835E_3F6C835E_3F273D75_3F273D75      // c22XX = c2222*c0044
+    il128     cYYZZ, 0x3F67F7F8_3F67F7F8_3F2406CF_3F2406CF      // cYYZZ = c1111*c2222*c0044
+    il128     C0055, 0x3F800000_3F800000_3F110329_3F110329      // C0055 = (1, 1, c5/c1, c5/c1)
+    il128     C0077, 0x3F800000_3F800000_3E7043AB_3E7043AB      // C0077 = (1, 1, c7/c3, c7/c3)
+    il128     K4422, 0x3F5906BD_3F5906BD_3EB3CA5E_3EB3CA5E      // K4422 = (c3333/c1111) * t4422
+    
+
+
+
+  
+    lqa       shuf_AaaA,     shuf_AaaA
+    lqa       shuf_A0B0C0D0, shuf_A0B0C0D0
+    lqa       shuf_E0F0G0H0, shuf_E0F0G0H0
+    fsmbi     mask_0011,     0x00FF
+
+
+    // prepare source pointer cycles 
+    shufb     UL,   UL, uL, shuf_AaaA
+    shufb     DL,   DL, dL, shuf_AaaA   
+    selb      srcL, UL, DL, mask_0011   // srcL = (UL, uL, dL, DL)  
+   
+    shufb     U0,   U0, u0, shuf_AaaA
+    shufb     D0,   D0, d0, shuf_AaaA
+    selb      src0, U0, D0, mask_0011   // src0 = (U0, u0, d0, D0) 
+   
+    shufb     UR,   UR, uR, shuf_AaaA
+    shufb     DR,   DR, dR, shuf_AaaA
+    selb      srcR, UR, DR, mask_0011   // srcR = (UR, uR, dR, DR)
+   
+    // (x) = (x+0x0000, x+0x0400, x+0x0800, x+0x0C00)
+    // (y) = (y+0x0000, y+0x0400, y+0x0800, y+0x0C00)
+    shufb     x, x, x, shuf_AaaA
+    shufb     y, y, y, shuf_AaaA
+    il128     ofs, 0x00000000_00000400_00000800_00000C00
+    a         x, x, ofs
+    a         y, y, ofs
+   
+    // one pass per row of fft buffer
+    il        cnt, 32
+    
+    // step values for src & dest: must only update one pointer from each bank
+    fsmbi     src_step, 0xF000
+    andi      dst_step, src_step, 0x80
+    andi      src_step, src_step, 0x20
+  
+loop:
+
+    // load 32 shorts from the real part and 32 shorts from the imaginary part of the tile
+    lqd       re0, 0x010(srcL)
+    lqd       re1, 0x000(src0)
+    lqd       re2, 0x010(src0)
+    lqd       re3, 0x000(srcR)
+   
+    lqd       im0, 0x110(srcL)
+    lqd       im1, 0x100(src0)
+    lqd       im2, 0x110(src0)
+    lqd       im3, 0x100(srcR)
+   
+    // pad lower 16 bits with zeros
+    shufb     x0123, re0, re0, shuf_A0B0C0D0
+    shufb     x4567, re0, re0, shuf_E0F0G0H0
+    shufb     x89AB, re1, re1, shuf_A0B0C0D0
+    shufb     xCDEF, re1, re1, shuf_E0F0G0H0
+    shufb     xGHIJ, re2, re2, shuf_A0B0C0D0
+    shufb     xKLMN, re2, re2, shuf_E0F0G0H0
+    shufb     xOPQR, re3, re3, shuf_A0B0C0D0
+    shufb     xSTUV, re3, re3, shuf_E0F0G0H0
+   
+    shufb     y0123, im0, im0, shuf_A0B0C0D0
+    shufb     y4567, im0, im0, shuf_E0F0G0H0
+    shufb     y89AB, im1, im1, shuf_A0B0C0D0
+    shufb     yCDEF, im1, im1, shuf_E0F0G0H0
+    shufb     yGHIJ, im2, im2, shuf_A0B0C0D0
+    shufb     yKLMN, im2, im2, shuf_E0F0G0H0
+    shufb     yOPQR, im3, im3, shuf_A0B0C0D0
+    shufb     ySTUV, im3, im3, shuf_E0F0G0H0
+   
+    // convert to float
+    csflt     x0123, x0123, 31
+    csflt     x4567, x4567, 31
+    csflt     x89AB, x89AB, 31
+    csflt     xCDEF, xCDEF, 31
+    csflt     xGHIJ, xGHIJ, 31
+    csflt     xKLMN, xKLMN, 31
+    csflt     xOPQR, xOPQR, 31
+    csflt     xSTUV, xSTUV, 31
+                          
+    csflt     y0123, y0123, 31
+    csflt     y4567, y4567, 31
+    csflt     y89AB, y89AB, 31
+    csflt     yCDEF, yCDEF, 31
+    csflt     yGHIJ, yGHIJ, 31
+    csflt     yKLMN, yKLMN, 31
+    csflt     yOPQR, yOPQR, 31
+    csflt     ySTUV, ySTUV, 31
+
+
+    // 1x16 butterflies of size 16
+    // ---------------------------
+
+    // 0,11,22,33
+    fs        Fx,    x0123, xGHIJ
+    fs        Fy,    y0123, yGHIJ
+    fa        X0123, x0123, xGHIJ             // *c0000
+    fa        Y0123, y0123, yGHIJ             // *c0000
+    fma       XGHIJ, t0123, Fy,    Fx         // *c0123
+    fnms      YGHIJ, t0123, Fx,    Fy         // *c0123
+    shufb     x0G1H, X0123, XGHIJ, shuf_AaBb  // *c0001
+    shufb     y0G1H, Y0123, YGHIJ, shuf_AaBb  // *c0001
+    shufb     x2I3J, X0123, XGHIJ, shuf_CcDd  // *c0203
+    shufb     y2I3J, Y0123, YGHIJ, shuf_CcDd  // *c0203
+    
+    // 45,56,67,78
+    fs        Fx,    x4567, xKLMN
+    fs        Fy,    y4567, yKLMN
+    fa        X4567, x4567, xKLMN             // *c0000
+    fa        Y4567, y4567, yKLMN             // *c0000
+    fma       XKLMN, t4567, Fy,    Fx         // *c4567
+    fnms      YKLMN, t4567, Fx,    Fy         // *c4567
+    shufb     x4K5L, X4567, XKLMN, shuf_AaBb  // *c0405
+    shufb     y4K5L, Y4567, YKLMN, shuf_AaBb  // *c0405
+    shufb     x6M7N, X4567, XKLMN, shuf_CcDd  // *c0607
+    shufb     y6M7N, Y4567, YKLMN, shuf_CcDd  // *c0607
+
+    // 90,101,112,123
+    fs        Fx,    xOPQR, x89AB
+    fs        Fy,    yOPQR, y89AB
+    fa        X89AB, xOPQR, x89AB             // *c0000
+    fa        Y89AB, yOPQR, y89AB             // *c0000
+    fms       XOPQR, t0123, Fx,    Fy         // *c0123
+    fma       YOPQR, t0123, Fy,    Fx         // *c0123
+    shufb     x8O9P, X89AB, XOPQR, shuf_AaBb  // *c0001
+    shufb     y8O9P, Y89AB, YOPQR, shuf_AaBb  // *c0001
+    shufb     xAQBR, X89AB, XOPQR, shuf_CcDd  // *c0203
+    shufb     yAQBR, Y89AB, YOPQR, shuf_CcDd  // *c0203
+    
+    // 135,146,157,168
+    fs        Fx,    xSTUV, xCDEF
+    fs        Fy,    ySTUV, yCDEF
+    fa        XCDEF, xSTUV, xCDEF             // *c0000
+    fa        YCDEF, ySTUV, yCDEF             // *c0000
+    fms       XSTUV, t4567, Fx,    Fy         // *c4567
+    fma       YSTUV, t4567, Fy,    Fx         // *c4567
+    shufb     xCSDT, XCDEF, XSTUV, shuf_AaBb  // *c0405
+    shufb     yCSDT, YCDEF, YSTUV, shuf_AaBb  // *c0405
+    shufb     xEUFV, XCDEF, XSTUV, shuf_CcDd  // *c0607
+    shufb     yEUFV, YCDEF, YSTUV, shuf_CcDd  // *c0607
+
+
+    
+    // 2x8 butterflies of size 8
+    // -------------------------
+
+    // 0,0,22,22
+    fs        Fx,    x0G1H, x8O9P             // *c0001
+    fs        Fy,    y0G1H, y8O9P             // *c0001
+    fa        X0G1H, x0G1H, x8O9P             // *c0001*c0000
+    fa        Y0G1H, y0G1H, y8O9P             // *c0001*c0000
+    fma       X8O9P, t0022, Fy,    Fx         // *c0001*c0022
+    fnms      Y8O9P, t0022, Fx,    Fy         // *c0001*c0022
+    shufb     x08GO, X0G1H, X8O9P, shuf_AaBb  // *c0000*c0000
+    shufb     y08GO, Y0G1H, Y8O9P, shuf_AaBb  // *c0000*c0000
+    shufb     x19HP, X0G1H, X8O9P, shuf_CcDd  // *c0011*c0202
+    shufb     y19HP, Y0G1H, Y8O9P, shuf_CcDd  // *c0011*c0202
+    
+    // 45,45,67,67
+    fs        Fx,    x2I3J, xAQBR             // *c0203
+    fs        Fy,    y2I3J, yAQBR             // *c0203
+    fa        X2I3J, x2I3J, xAQBR             // *c0203*c0000
+    fa        Y2I3J, y2I3J, yAQBR             // *c0203*c0000
+    fma       XAQBR, t4466, Fy,    Fx         // *c0203*c4466
+    fnms      YAQBR, t4466, Fx,    Fy         // *c0203*c4466
+    shufb     x2AIQ, X2I3J, XAQBR, shuf_AaBb  // *c0022*c0404
+    shufb     y2AIQ, Y2I3J, YAQBR, shuf_AaBb  // *c0022*c0404
+    shufb     x3BJR, X2I3J, XAQBR, shuf_CcDd  // *c0033*c0606
+    shufb     y3BJR, Y2I3J, YAQBR, shuf_CcDd  // *c0033*c0606
+    
+    // 90,90,112,112
+    fs        Fx,    xCSDT, x4K5L             // *c0405
+    fs        Fy,    yCSDT, y4K5L             // *c0405
+    fa        X4K5L, xCSDT, x4K5L             // *c0405*c0000
+    fa        Y4K5L, yCSDT, y4K5L             // *c0405*c0000
+    fms       XCSDT, t0022, Fx,    Fy         // *c0405*c0022
+    fma       YCSDT, t0022, Fy,    Fx         // *c0405*c0022
+    shufb     x4CKS, X4K5L, XCSDT, shuf_AaBb  // *c0044*c0000
+    shufb     y4CKS, Y4K5L, YCSDT, shuf_AaBb  // *c0044*c0000
+    shufb     x5DLT, X4K5L, XCSDT, shuf_CcDd  // *c0055*c0202
+    shufb     y5DLT, Y4K5L, YCSDT, shuf_CcDd  // *c0055*c0202
+    
+    // 135,135,157,157
+    fs        Fx,    xEUFV, x6M7N             // *c0607
+    fs        Fy,    yEUFV, y6M7N             // *c0607
+    fa        X6M7N, xEUFV, x6M7N             // *c0607*c0000
+    fa        Y6M7N, yEUFV, y6M7N             // *c0607*c0000
+    fms       XEUFV, t4466, Fx,    Fy         // *c0607*c4466
+    fma       YEUFV, t4466, Fy,    Fx         // *c0607*c4466
+    shufb     x6EMU, X6M7N, XEUFV, shuf_AaBb  // *c0066*c0404
+    shufb     y6EMU, Y6M7N, YEUFV, shuf_AaBb  // *c0066*c0404
+    shufb     x7FNV, X6M7N, XEUFV, shuf_CcDd  // *c0077*c0606
+    shufb     y7FNV, Y6M7N, YEUFV, shuf_CcDd  // *c0077*c0606
+    
+    
+
+    // 4x4 butterflies of size 4
+    // -------------------------
+    
+    // 0,0,0,0
+    fma       X08GO, c0044, x4CKS, x08GO
+    fma       Y08GO, c0044, y4CKS, y08GO
+    fnms      X4CKS, c0044, x4CKS, x08GO
+    fnms      Y4CKS, c0044, y4CKS, y08GO
+    shufb     x048C, X08GO, X4CKS, shuf_AaBb
+    shufb     y048C, Y08GO, Y4CKS, shuf_AaBb
+    shufb     xGKOS, X08GO, X4CKS, shuf_CcDd
+    shufb     yGKOS, Y08GO, Y4CKS, shuf_CcDd
+
+    // 45,45,45,45
+    fnms      Fx,    C0055, x5DLT, x19HP      // *c0011*c0202,    C0055 = (1, 1, c5/c1, c5/c1)
+    fnms      Fy,    C0055, y5DLT, y19HP      // *c0011*c0202
+    fma       X19HP, C0055, x5DLT, x19HP      // *c0011*c0202*c0000
+    fma       Y19HP, C0055, y5DLT, y19HP      // *c0011*c0202*c0000
+    fa        X5DLT, Fx,    Fy                // *c0011*c0202*c4444
+    fs        Y5DLT, Fy,    Fx                // *c0011*c0202*c4444
+    shufb     x159D, X19HP, X5DLT, shuf_AaBb  // *c0000*c0022*c0404
+    shufb     y159D, Y19HP, Y5DLT, shuf_AaBb  // *c0000*c0022*c0404
+    shufb     xHLPT, X19HP, X5DLT, shuf_CcDd  // *c1111*c0022*c0404
+    shufb     yHLPT, Y19HP, Y5DLT, shuf_CcDd  // *c1111*c0022*c0404
+
+    // 90,90,90,90
+    fma       X2AIQ, t4422, x6EMU, x2AIQ      // *c0022*c0404
+    fma       Y2AIQ, t4422, y6EMU, y2AIQ      // *c0022*c0404
+    fnms      X6EMU, t4422, y6EMU, y2AIQ      // *c0022*c0404
+    fms       Y6EMU, t4422, x6EMU, x2AIQ      // *c0022*c0404
+    shufb     x26AE, X2AIQ, X6EMU, shuf_AaBb  // *c0000*c0044
+    shufb     y26AE, Y2AIQ, Y6EMU, shuf_AaBb  // *c0000*c0044
+    shufb     xIMQU, X2AIQ, X6EMU, shuf_CcDd  // *c2222*c0044
+    shufb     yIMQU, Y2AIQ, Y6EMU, shuf_CcDd  // *c2222*c0044
+
+    // 135,135,135,135
+    fms       Fx,    C0077, x7FNV, x3BJR      // *c0033*c0606,    C0077 = (1, 1, c7/c3, c7,c3)
+    fms       Fy,    C0077, y7FNV, y3BJR      // *c0033*c0606
+    fma       X3BJR, C0077, x7FNV, x3BJR      // *c0033*c0606*c0000
+    fma       Y3BJR, C0077, y7FNV, y3BJR      // *c0033*c0606*c0000
+    fs        X7FNV, Fx,    Fy                // *c0033*c0606*c4444
+    fa        Y7FNV, Fy,    Fx                // *c0033*c0606*c4444
+    shufb     x37BF, X3BJR, X7FNV, shuf_AaBb  // *c0000*c0066*c0404
+    shufb     y37BF, Y3BJR, Y7FNV, shuf_AaBb  // *c0000*c0066*c0404
+    shufb     xJNRV, X3BJR, X7FNV, shuf_CcDd  // *c3333*c0066*c0404
+    shufb     yJNRV, Y3BJR, Y7FNV, shuf_CcDd  // *c3333*c0066*c0404
+    
+    
+    
+    // 8x2 butterflies of size 2
+    // -------------------------
+    
+    // 0,0,0,0
+    fma       X048C, c0044, x26AE, x048C
+    fma       Y048C, c0044, y26AE, y048C
+    fnms      X26AE, c0044, x26AE, x048C
+    fnms      Y26AE, c0044, y26AE, y048C
+    shufb     x0246, X048C, X26AE, shuf_AaBb
+    shufb     y0246, Y048C, Y26AE, shuf_AaBb
+    shufb     x8ACE, X048C, X26AE, shuf_CcDd
+    shufb     y8ACE, Y048C, Y26AE, shuf_CcDd
+    
+    // 90,90,90,90
+    fma       X159D, t4422, x37BF, x159D      // *c0022*c0404
+    fma       Y159D, t4422, y37BF, y159D      // *c0022*c0404
+    fnms      X37BF, t4422, y37BF, y159D      // *c0022*c0404
+    fms       Y37BF, t4422, x37BF, x159D      // *c0022*c0404
+    shufb     x1357, X159D, X37BF, shuf_AaBb  // *c0000*c0044
+    shufb     y1357, Y159D, Y37BF, shuf_AaBb  // *c0000*c0044
+    shufb     x9BDF, X159D, X37BF, shuf_CcDd  // *c2222*c0044
+    shufb     y9BDF, Y159D, Y37BF, shuf_CcDd  // *c2222*c0044
+
+    // 0,0,0,0
+    fma       XGKOS, c22XX, xIMQU, xGKOS      // c22XX = c2222*c0044
+    fma       YGKOS, c22XX, yIMQU, yGKOS
+    fnms      XIMQU, c22XX, xIMQU, xGKOS
+    fnms      YIMQU, c22XX, yIMQU, yGKOS
+    shufb     xGIKM, XGKOS, XIMQU, shuf_AaBb
+    shufb     yGIKM, YGKOS, YIMQU, shuf_AaBb
+    shufb     xOQSU, XGKOS, XIMQU, shuf_CcDd
+    shufb     yOQSU, YGKOS, YIMQU, shuf_CcDd
+
+    // 90,90,90,90
+    fma       XHLPT, K4422, xJNRV, xHLPT      // *c1111*c0022*c0404,    K0022 = (c3333/c1111) * t4422
+    fma       YHLPT, K4422, yJNRV, yHLPT      // *c1111*c0022*c0404
+    fnms      XJNRV, K4422, yJNRV, yHLPT      // *c1111*c0022*c0404
+    fms       YJNRV, K4422, xJNRV, xHLPT      // *c1111*c0022*c0404
+    shufb     xHJLN, XHLPT, XJNRV, shuf_AaBb  // *c1111*c0000*c0044
+    shufb     yHJLN, YHLPT, YJNRV, shuf_AaBb  // *c1111*c0000*c0044
+    shufb     xPRTV, XHLPT, XJNRV, shuf_CcDd  // *c1111*c2222*c0044
+    shufb     yPRTV, YHLPT, YJNRV, shuf_CcDd  // *c1111*c2222*c0044
+    
+
+    
+    // 16x1 butterflies of size 1
+    // --------------------------
+    
+    // 0,0,0,0
+    fma       X0246, c0044, x1357, x0246
+    fma       Y0246, c0044, y1357, y0246
+    fnms      X1357, c0044, x1357, x0246
+    fnms      Y1357, c0044, y1357, y0246
+    shufb     x0123, X0246, X1357, shuf_AaBb
+    shufb     y0123, Y0246, Y1357, shuf_AaBb
+    shufb     x4567, X0246, X1357, shuf_CcDd
+    shufb     y4567, Y0246, Y1357, shuf_CcDd
+    
+    // 0,0,0,0
+    fma       X8ACE, c22XX, x9BDF, x8ACE      // c22XX = c2222*c0044
+    fma       Y8ACE, c22XX, y9BDF, y8ACE
+    fnms      X9BDF, c22XX, x9BDF, x8ACE
+    fnms      Y9BDF, c22XX, y9BDF, y8ACE
+    shufb     x89AB, X8ACE, X9BDF, shuf_AaBb
+    shufb     y89AB, Y8ACE, Y9BDF, shuf_AaBb
+    shufb     xCDEF, X8ACE, X9BDF, shuf_CcDd
+    shufb     yCDEF, Y8ACE, Y9BDF, shuf_CcDd
+    
+    // 0,0,0,0
+    fma       XGIKM, c11XX, xHJLN, xGIKM      // c11XX = c1111*c0044
+    fma       YGIKM, c11XX, yHJLN, yGIKM
+    fnms      XHJLN, c11XX, xHJLN, xGIKM
+    fnms      YHJLN, c11XX, yHJLN, yGIKM
+    shufb     xGHIJ, XGIKM, XHJLN, shuf_AaBb
+    shufb     yGHIJ, YGIKM, YHJLN, shuf_AaBb
+    shufb     xKLMN, XGIKM, XHJLN, shuf_CcDd
+    shufb     yKLMN, YGIKM, YHJLN, shuf_CcDd
+    
+    // 0,0,0,0
+    fma       XOQSU, cYYZZ, xPRTV, xOQSU      // cYYZZ = c1111*c2222*c0044
+    fma       YOQSU, cYYZZ, yPRTV, yOQSU
+    fnms      XPRTV, cYYZZ, xPRTV, xOQSU
+    fnms      YPRTV, cYYZZ, yPRTV, yOQSU
+    shufb     xOPQR, XOQSU, XPRTV, shuf_AaBb
+    shufb     yOPQR, YOQSU, YPRTV, shuf_AaBb
+    shufb     xSTUV, XOQSU, XPRTV, shuf_CcDd
+    shufb     ySTUV, YOQSU, YPRTV, shuf_CcDd
+    
+
+
+
+    // store 32 real values
+    stqd      x0123, 0x00(x)
+    stqd      x4567, 0x10(x) 
+    stqd      x89AB, 0x20(x) 
+    stqd      xCDEF, 0x30(x) 
+    stqd      xGHIJ, 0x40(x) 
+    stqd      xKLMN, 0x50(x) 
+    stqd      xOPQR, 0x60(x) 
+    stqd      xSTUV, 0x70(x) 
+    
+    // store 32 imaginary values
+    stqd      y0123, 0x00(y)
+    stqd      y4567, 0x10(y) 
+    stqd      y89AB, 0x20(y) 
+    stqd      yCDEF, 0x30(y) 
+    stqd      yGHIJ, 0x40(y) 
+    stqd      yKLMN, 0x50(y) 
+    stqd      yOPQR, 0x60(y) 
+    stqd      ySTUV, 0x70(y) 
+    
+
+
+   
+    // step pointers
+    a         srcL, srcL, src_step
+    a         src0, src0, src_step 
+    a         srcR, srcR, src_step
+    a         x, x, dst_step  
+    a         y, y, dst_step  
+    
+    // cycle to next set of pointers
+    rotqbyi   srcL, srcL, 4
+    rotqbyi   src0, src0, 4
+    rotqbyi   srcR, srcR, 4
+    rotqbyi   x, x, 4
+    rotqbyi   y, y, 4
+    
+    // loop
+    ai        cnt, cnt, -1
+    brnz      cnt, loop
+  
+.endfunc
+

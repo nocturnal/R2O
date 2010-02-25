@@ -1,0 +1,110 @@
+#define OCCL_VOLUME
+#define SHADOW
+#define SHRUB
+
+#include "vp_consts.h"
+#include "vp_structs.h"
+#include "vp_funcs.h"
+#include "vp_funcs_ufrag.h"
+#include "../FragmentPrograms/fp_structs.h"
+//#include "../FragmentPrograms/Image_Structs.h"
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+__ENTRY__ FpR2O VP_r2o(VPR2OIn vertex)
+{
+  FpR2O result;
+
+  // construct world position
+  float3 pos = vertex.position.x * g_r2o_dvc_world.xyz +
+               vertex.position.y * g_r2o_dvr_world.xyz;
+  pos.y = (vertex.position.z*256.0 + vertex.position.w - 32768.0) * g_r2o_inv_scales.y;
+  pos += g_r2o_org_world.xyz;
+  float4 world_pos = float4(pos, 1.0);
+
+  // derive the uv's for normal mapping
+  result.uv = world_pos.x * g_r2o_norm_map_mat0 + world_pos.z * g_r2o_norm_map_mat1 + 0.5;
+
+  // uv's for interactive normal map
+  result.int_uv01.xy = (float2(world_pos.x, world_pos.z) - g_r2o_interactive_constants0.xz) * g_r2o_interactive_constants0.w;
+  result.int_uv01.zw = (float2(world_pos.x, world_pos.z) - g_r2o_interactive_constants1.xz) * g_r2o_interactive_constants1.w;
+  result.int_uv2     = (float2(world_pos.x, world_pos.z) - g_r2o_interactive_constants2.xz) * g_r2o_interactive_constants2.w;
+
+  // pass through derivs (scaled)
+  float2 derivs = (1.0/128.0) * vertex.derivs.xy - 1.0;
+  derivs *= 32768.0;
+  result.derivs.xy = derivs * g_r2o_inv_scales.x;
+
+  // transform position
+  result.position = mul(g_view_proj_mat, world_pos);
+
+  // pass camera space w in w of derivs
+  result.derivs.w = result.position.w;
+
+  // fog value
+  float fog = clamp((g_fog_consts.x * result.position.w) + g_fog_consts.y, 0.0, g_fog_consts.w);
+
+  // view vector (plus fog in w)
+  result.viewvec.xyz = g_camera_pos.xyz - world_pos.xyz;
+  result.viewvec.w   = fog;
+
+  return result;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+__ENTRY__ FpR2O VP_r2o_near(VPR2OIn vertex)
+{
+  FpR2O result;
+
+  // construct world position
+  float3 pos = vertex.position.x * g_r2o_dvc_world.xyz +
+               vertex.position.y * g_r2o_dvr_world.xyz;
+  pos.y = (vertex.position.z*256.0 + vertex.position.w - 32768.0) * g_r2o_inv_scales.y;
+  pos += g_r2o_org_world.xyz;
+  float4 world_pos = float4(pos, 1.0);
+
+  // derive the uv's for normal mapping
+  result.uv = world_pos.x * g_r2o_norm_map_mat0 + world_pos.z * g_r2o_norm_map_mat1 + 0.5;
+
+  // uv's for interactive normal map
+  result.int_uv01.xy = (float2(world_pos.x, world_pos.z) - g_r2o_interactive_constants0.xz) * g_r2o_interactive_constants0.w;
+  result.int_uv01.zw = (float2(world_pos.x, world_pos.z) - g_r2o_interactive_constants1.xz) * g_r2o_interactive_constants1.w;
+  result.int_uv2     = (float2(world_pos.x, world_pos.z) - g_r2o_interactive_constants2.xz) * g_r2o_interactive_constants2.w;
+
+  // pass through derivs (scaled)
+  float2 derivs = (1.0/128.0) * vertex.derivs.xy - 1.0;
+  derivs *= 32768.0;
+  result.derivs.xy = derivs * g_r2o_inv_scales.x;
+
+  // transform position
+  result.position = mul(g_view_proj_mat, world_pos);
+
+  // pass camera space w in w of derivs
+  result.derivs.w = result.position.w;
+
+  // apply z-adjustment if point is closer than just beyond the near plane
+  float camera_z = dot(g_r2o_w2c_col_2, world_pos);
+  if (camera_z < g_r2o_near_constants.x)
+  {
+    // rescale camera z to lie in the special depth band
+    camera_z = camera_z * g_r2o_near_constants.y + g_r2o_near_constants.z;
+
+    // recompute world z
+    result.position.z = g_proj_mat[2].z * camera_z + g_proj_mat[2].w;
+  }
+
+  // view vector (plus fog in w)
+  result.viewvec.xyz = g_camera_pos.xyz - world_pos.xyz;
+  result.viewvec.w   = 0.0;
+
+  return result;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+

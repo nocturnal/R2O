@@ -1,0 +1,306 @@
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_RotatePhaseAngles(f32 angles[], f32 frequencies[], u32 cnt, f32 dt)
+//
+// Rotate a set of phase angles according to the given time-step.
+// Each phase angle corresponds to a sinusoid of known wavelength
+// which is related to the angular frequency by the dispersion
+// relation for water - the angular frequencies have been precomputed.
+// A full cycle is represented by the 0.0->1.0 range, and each angle
+// is reduced to this range after rotation. All the increments are
+// positive, making the range-reduction very straightforward.
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_RotatePhaseAngles(f32 *angles, f32 *frequencies, u32 cnt, f32 dt)
+
+    .reg      a0, a1, da, a1_int, ofs, magic, shuf_AAAA, p_out
+
+    ila       shuf_AAAA, 0x00010203
+    shufb     dt, dt, dt, shuf_AAAA
+    
+    il        ofs,  0
+    ilhu      magic, 0x4B40   // 2^23+2^22
+    
+    ai        p_out, angles, -16
+
+loop:
+
+    lqx       a0, angles,      ofs
+    lqx       da, frequencies, ofs
+    
+    fma       a1, da, dt, a0
+    
+    fa        a1_int, a1,     magic
+    fs        a1_int, a1_int, magic
+    fs        a1, a1, a1_int
+    
+    ai        ofs, ofs,  16
+    stqx      a1, p_out, ofs
+    
+    ai        cnt, cnt, -4
+    brnz      cnt, loop
+
+.endfunc
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_GeneratePhasorPalette(Complex phasors[], f32 angles[], f32 wave_scales[], f32 lod_scale, u32 cnt)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// for (u32 idx=0; idx<cnt; idx++)
+// {
+//   phasors[idx] = lod_scale * wave_scales[idx] * Expi(2.0f*PI*angles[idx]);
+// }
+  
+.cfunc void R2O_GeneratePhasorPalette(Complex *phasors, f32 *angles, f32 *wave_scales, f32 lod_scale, u32 cnt)
+
+    .reg      s1, s3, s5, s7, s9, half, quarter, sign_bit
+    .reg      shuf_AAAA, shuf_AaBb, shuf_CcDd
+    .reg      t, w, x, y, x2, y2, c, s
+    .reg      ofs, ofs2, phasx, phasy, phas01, phas23, phasors_
+
+
+    ilf32     s1,  6.28318527388f   //  1.57079631847 * 2^2 
+    ilf32     s3, -41.3416775078f   // -0.64596371106 * 2^6 
+    ilf32     s5,  81.6022315827f   //  0.07968967928 * 2^10
+    ilf32     s7, -76.5749750989f   // -0.00467376557 * 2^14
+    ilf32     s9,  39.7106715034f   //  0.00015148419 * 2^18
+
+    ilhu      half,     0x3F00
+    ilhu      quarter,  0x3E80
+    ilhu      sign_bit, 0x8000
+    
+    ila       shuf_AAAA, 0x00010203
+    il128     shuf_AaBb, "AaBb"
+    il128     shuf_CcDd, "CcDd"
+
+    shufb     lod_scale, lod_scale, lod_scale, shuf_AAAA
+    
+    ai        phasors_, phasors, 16
+    il        ofs2, 0
+    
+    mpyi      ofs, cnt, -4
+    sf        wave_scales, ofs, wave_scales
+    sf        angles,      ofs, angles
+
+
+loop:
+
+    // load 4 wave scales, scale by lod scale
+    lqx       w, wave_scales, ofs
+    fm        w, w, lod_scale
+
+    // load 4 angles (each in the range [0,1], 1 representing 2*pi radians)
+    lqx       t, angles, ofs        
+                                    //     /                   //
+    // range-reduction for cos      //    /                    //
+    fs        t, half, t            //   /          \      /   //
+    andc      x, t, sign_bit        //  /___   ->   _\____/_   //
+    fs        x, x, quarter         //                \  /     //
+                                    //     /           \/      //
+    // range-reduction for sin      //    /                    //
+    andc      y, x, sign_bit        //   /           /\        //
+    fs        y, y, quarter         //  /___   ->   /__\____   //
+    selb      y, y, t, sign_bit     //                  \  /   //
+                                    //                   \/    //
+    // compute 4 cosines
+    fm        x2, x, x              // x2 = x^2
+    fma       c, s9, x2, s7         // c  = s7   + s9*x^2
+    fma       c, c,  x2, s5         // c  = s5   + s7*x^2 + s9*x^4
+    fma       c, c,  x2, s3         // c  = s3   + s5*x^2 + s7*x^4 + s9*x^6
+    fma       c, c,  x2, s1         // c  = s1   + s3*x^2 + s5*x^4 + s7*x^6 + s9*x^8
+    fm        c, c,  x              // c  = s1*x + s3*x^3 + s5*x^5 + s7*x^7 + s9*x^9 
+
+    // compute 4 sines
+    fm        y2, y, y              // y2 = y^2                                     
+    fma       s, s9, y2, s7         // c  = s7   + s9*y^2                             
+    fma       s, s,  y2, s5         // c  = s5   + s7*y^2 + s9*y^4                    
+    fma       s, s,  y2, s3         // c  = s3   + s5*y^2 + s7*y^4 + s9*y^6           
+    fma       s, s,  y2, s1         // c  = s1   + s3*y^2 + s5*y^4 + s7*y^6 + s9*y^8  
+    fm        s, s,  y              // c  = s1*y + s3*y^3 + s5*y^5 + s7*y^7 + s9*y^9
+
+    // compute 4 phasors
+    fm        phasx, c, w
+    fm        phasy, s, w
+    shufb     phas01, phasx, phasy, shuf_AaBb
+    shufb     phas23, phasx, phasy, shuf_CcDd
+    
+    // store
+    stqx      phas01, phasors,  ofs2
+    stqx      phas23, phasors_, ofs2
+
+    // step offsets
+    ai        ofs,  ofs,  16
+    ai        ofs2, ofs2, 32
+    
+    // loop
+    brnz      ofs, loop
+
+
+.endfunc
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_ReconstructPhasors(f32 *x, f32 *y, Complex phasor_palette[], i8 spectrum[], u32 cnt)
+//
+// reconstruct the phasors for a single waveband
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// for (u32 i=0; i<cnt; i++)
+// {
+//   u8 idx = *index_map++;
+//   Complex spec;
+//   spec.re = (f32)(*spectrum++) * (1.0f/128.0f);
+//   spec.im = (f32)(*spectrum++) * (1.0f/128.0f);
+//   Complex phasor =  spec * phasor_palette[idx];
+//   *x++ = phasor.re;
+//   *y++ = phasor.im;
+// }
+
+.cfunc void R2O_ReconstructPhasors(f32 *x, f32 *y, Complex *phasor_palette, i8 *spectrum, u8 *index_map, u32 cnt)
+
+    .reg    shuf_A800C800E800G800, shuf_B800D800F800H800, shuf_DDDDDDDDdddddddd
+    .reg    shuf_ABab, shuf_BAba, shuf_BaDc, mask_0101
+    .reg    indices, qofs, hword_0x07F8, byte_0x88
+    .reg    ofs0, ofs1, ofs2, ofs3, pal0, pal1, pal2, pal3, shuf02, shuf13
+    .reg    pal02, pal13, palx, paly, spec, specx, specy, phasx, phasy
+
+    il128   shuf_A800C800E800G800, "A800C800E800G800"
+    il128   shuf_B800D800F800H800, "B800D800F800H800"
+    il128   shuf_DDDDDDDDdddddddd, "DDDDDDDDdddddddd"
+    il128   shuf_ABab, "ABab"
+    il128   shuf_BAba, "BAba"
+    il128   shuf_BaDc, "BaDc"
+    fsmbi   mask_0101, 0x0F0F
+    ilh     hword_0x07F8, 0x07F8
+    ilh     byte_0x88, 0x8888
+    
+    il      qofs, 0
+    mpyi    qofs, cnt, -4
+    sf      x, qofs, x
+    sf      y, qofs, y
+
+loop:
+
+    // get 4 indices
+    lqd     indices, 0(index_map)
+    rotqby  indices, indices, index_map
+    
+    // convert indices to offsets
+    roti    ofs0, indices, 11
+    and     ofs0, ofs0, hword_0x07F8
+    roti    ofs1, indices, 19
+    and     ofs1, ofs1, hword_0x07F8
+    roti    ofs2, ofs0, 16
+    roti    ofs3, ofs1, 16
+    
+    // look up 4 palette entries
+    lqx     pal0, phasor_palette, ofs0
+    lqx     pal1, phasor_palette, ofs1
+    lqx     pal2, phasor_palette, ofs2
+    lqx     pal3, phasor_palette, ofs3
+    
+    shufb   shuf02, ofs0, ofs2, shuf_DDDDDDDDdddddddd
+    shufb   shuf13, ofs1, ofs3, shuf_DDDDDDDDdddddddd
+    selb    shuf02, shuf_ABab, shuf02, byte_0x88
+    selb    shuf13, shuf_BAba, shuf13, byte_0x88
+    
+    shufb   pal02, pal0, pal2, shuf02
+    shufb   pal13, pal1, pal3, shuf13
+    
+    selb    palx, pal02, pal13, mask_0101
+    shufb   paly, pal02, pal13, shuf_BaDc
+    
+    // get 4 spectrum entries
+    lqd     spec, 0(spectrum)
+    rotqby  spec, spec, spectrum
+    shufb   specx, spec, spec, shuf_A800C800E800G800
+    shufb   specy, spec, spec, shuf_B800D800F800H800
+    csflt   specx, specx, 31
+    csflt   specy, specy, 31
+    
+    // phasor = spec * pal (4 complex multiplies)
+    fm      phasx, specx, palx
+    fnms    phasx, specy, paly, phasx
+    fm      phasy, specx, paly
+    fma     phasy, specy, palx, phasy
+    
+    // store 4 real parts & 4 imaginary parts
+    stqx    phasx, x, qofs
+    stqx    phasy, y, qofs
+    
+    // step pointers
+    ai      index_map, index_map, 4
+    ai      spectrum, spectrum, 8
+    ai      qofs, qofs, 16
+    
+    // loop
+    brnz    qofs, loop
+    
+.endfunc
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// void R2O_GenerateCausticsGradients(f32 *p_grad, f32 *p_height, f32 inv_step, u32 cnt)
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// for (u32 i=0; i<cnt; i++)
+// {
+//   p_grad[0] = (p_height[1 ] - p_height[0]) * inv_step;
+//   p_grad[1] = (p_height[32] - p_height[0]) * inv_step;
+//
+//   p_grad += 2;
+//   p_height++;
+// }
+
+.cfunc void R2O_GenerateCausticsGradients(f32 *p_grad, Complex *p_height, f32 inv_step, u32 cnt)
+
+    .reg      y0, yR, yx, yz, gx, gz, g0, g1, shuf_AAAA, shuf_BCDa, shuf_AaBb, shuf_CcDd
+
+    ila       shuf_AAAA, 0x00010203
+    il128     shuf_BCDa, "BCDa"
+    il128     shuf_AaBb, "AaBb"
+    il128     shuf_CcDd, "CcDd"
+
+    shufb     inv_step, inv_step, inv_step, shuf_AAAA
+    lqd       yR, 0x00(p_height)
+
+loop:
+
+    ai        y0, yR, 0
+    lqd       yR, 0x10(p_height)
+    lqd       yz, 0x80(p_height)
+    ai        p_height, p_height, 0x10
+
+    shufb     yx, y0, yR, shuf_BCDa
+    
+    fs        gx, yx, y0
+    fs        gz, yz, y0
+    
+    fm        gx, gx, inv_step
+    fm        gz, gz, inv_step
+    
+    shufb     g0, gx, gz, shuf_AaBb
+    shufb     g1, gx, gz, shuf_CcDd
+    
+    stqd      g0, 0x00(p_grad)
+    stqd      g1, 0x10(p_grad)
+    ai        p_grad,   p_grad,   0x20
+    
+    ai        cnt, cnt, -4
+    brnz      cnt, loop
+    
+.endfunc
+

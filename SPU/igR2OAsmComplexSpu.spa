@@ -1,0 +1,4829 @@
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_FFT32_DIF_rows_asm(f32 z[], u32 cnt)
+// 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_FFT32_DIF_rows_asm(f32 *z, u32 cnt)
+
+    
+    .reg      a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, aA, aB, aC, aD, aE, aF
+    .reg      b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, bA, bB, bC, bD, bE, bF
+    .reg      c0, c1, c2, c3, c4, c5, c6, c7, c8, c9, cA, cB, cC, cD, cE, cF
+    .reg      d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, dA, dB, dC, dD, dE, dF
+    .reg      e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, eA, eB, eC, eD, eE, eF
+    .reg      f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, fA, fB, fC, fD, fE, fF
+
+    .reg      X0, X1, X2, X3, X4, X5, X6, X7, X8, X9, XA, XB, XC, XD, XE, XF
+    .reg      Y0, Y1, Y2, Y3, Y4, Y5, Y6, Y7, Y8, Y9, YA, YB, YC, YD, YE, YF
+
+    .reg      T8, T9, TA, TB, TC, TD, TE, TF
+    .reg      U4, U5, U6, U7, UC, UD, UE, UF
+    .reg      V0, V1, V4, V5, V8, V9, VC, VD
+
+    .reg      C0, C1, C4, C5, C8, C9, CC, CD
+    .reg      D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, DA, DB, DC, DD, DE, DF
+    .reg      E0, E1, E2, E3, E4, E5, E6, E7, E8, E9, EA, EB, EC, ED, EE, EF
+
+    .reg      shuf_BADC, shuf_ABDc
+    .reg      const_00tT, const_uUvV, const_1mvV, const_uUtT, const_11cc, const_ddee
+    .reg      const_rReE, const_dDcC, const_1mcC, const_dDeE, const_RREE, const_DDCC
+    .reg      const_00uU, const_1muU, const_11dd, const_rRdD, const_1mdD, const_RRDD
+    .reg      const_11rr, const_00rR, const_00RR, const_1mrR, const_11mm
+
+    il128     shuf_BADC,  0x04050607_00010203_0C0D0E0F_08090A0B
+    il128     shuf_ABDc,  0x00010203_04050607_0C0D0E0F_18191A1B
+
+    il128     const_00tT, 0x00000000_00000000_3E4BAFAF_BE4BAFAF   // ( t0,-t0, t1,-t1)
+    il128     const_uUvV, 0x3ED413CD_BED413CD_3F2B0DC1_BF2B0DC1   // ( t2,-t2, t3,-t3)
+    il128     const_1mvV, 0x3F800000_BF800000_3F2B0DC1_BF2B0DC1   // ( t4,-t4, t3,-t3)
+    il128     const_uUtT, 0x3ED413CD_BED413CD_3E4BAFAF_BE4BAFAF   // ( t2,-t2, t1,-t1)
+    il128     const_11cc, 0x3F800000_3F800000_3F7B14BE_3F7B14BE   // ( c0, c0, c1, c1)
+    il128     const_ddee, 0x3F6C835E_3F6C835E_3F54DB31_3F54DB31   // ( c2, c2, c3, c3)  
+    il128     const_rReE, 0x3F3504F3_BF3504F3_3F54DB31_BF54DB31   // ( c4,-c4, c3,-c3)
+    il128     const_dDcC, 0x3F6C835E_BF6C835E_3F7B14BE_BF7B14BE   // ( c2,-c2, c1,-c1) 
+    il128     const_1mcC, 0x3F800000_BF800000_3F7B14BE_BF7B14BE   // (  1, -1, c1,-c1)
+    il128     const_dDeE, 0x3F6C835E_BF6C835E_3F54DB31_BF54DB31   // ( c2,-c2, c3,-c3)
+    il128     const_RREE, 0xBF3504F3_BF3504F3_BF54DB31_BF54DB31   // (-c4,-c4,-c3,-c3)
+    il128     const_DDCC, 0xBF6C835E_BF6C835E_BF7B14BE_BF7B14BE   // (-c2,-c2,-c1,-c1)
+    il128     const_00uU, 0x00000000_00000000_3ED413CD_BED413CD   // (  0,  0, t2,-t2)
+    il128     const_1muU, 0x3F800000_BF800000_3ED413CD_BED413CD   // ( t4,-t4, t2,-t2)
+    il128     const_11dd, 0x3F800000_3F800000_3F6C835E_3F6C835E   // ( c0, c0, c2, c2)
+    il128     const_rRdD, 0x3F3504F3_BF3504F3_3F6C835E_BF6C835E   // ( c4,-c4, c2,-c2)
+    il128     const_1mdD, 0x3F800000_BF800000_3F6C835E_BF6C835E   // ( c0,-c0, c2,-c2)
+    il128     const_RRDD, 0xBF3504F3_BF3504F3_BF6C835E_BF6C835E   // (-c4,-c4,-c2,-c2)
+    il128     const_11rr, 0x3F800000_3F800000_3F3504F3_3F3504F3   // ( c0, c0, c4, c4)
+    il128     const_00rR, 0x00000000_00000000_3F3504F3_BF3504F3   // (  0,  0, c4,-c4)
+    il128     const_00RR, 0x00000000_00000000_BF3504F3_BF3504F3   // (  0,  0,-c4,-c4)
+    il128     const_1mrR, 0x3F800000_BF800000_3F3504F3_BF3504F3   // ( c0,-c0, c4,-c4)
+    il128     const_11mm, 0x3F800000_3F800000_BF800000_BF800000   // ( c0, c0,-c0,-c0)
+    
+
+
+loop:   // 130 even + 89 odd
+
+    // load 32 complex values
+    lqd       a0, 0x00(z)
+    lqd       a1, 0x10(z)
+    lqd       a2, 0x20(z)
+    lqd       a3, 0x30(z)
+    lqd       a4, 0x40(z)
+    lqd       a5, 0x50(z)
+    lqd       a6, 0x60(z)
+    lqd       a7, 0x70(z)
+    lqd       a8, 0x80(z)
+    lqd       a9, 0x90(z)
+    lqd       aA, 0xA0(z)
+    lqd       aB, 0xB0(z)
+    lqd       aC, 0xC0(z)
+    lqd       aD, 0xD0(z)
+    lqd       aE, 0xE0(z)
+    lqd       aF, 0xF0(z)
+
+    // 1x16 butterflies of size 16 (32 even + 8 odd)
+    // ---------------------------
+
+    fa        b0, a0, a8
+    fa        b1, a1, a9
+    fa        b2, a2, aA
+    fa        b3, a3, aB
+    fa        b4, a4, aC
+    fa        b5, a5, aD
+    fa        b6, a6, aE
+    fa        b7, a7, aF
+
+    fs        X0, a0, a8
+    fs        X1, a1, a9
+    fs        X2, a2, aA
+    fs        X3, a3, aB
+    fs        X4, a4, aC
+    fs        X5, a5, aD
+    fs        X6, a6, aE
+    fs        X7, a7, aF
+
+    shufb     X8, X0, X0, shuf_BADC
+    shufb     X9, X1, X1, shuf_BADC
+    shufb     XA, X2, X2, shuf_BADC
+    shufb     XB, X3, X3, shuf_BADC
+    shufb     XC, X4, X4, shuf_BADC
+    shufb     XD, X5, X5, shuf_BADC
+    shufb     XE, X6, X6, shuf_BADC
+    shufb     XF, X7, X7, shuf_BADC
+
+    fma       T8, X8, const_00tT, X0
+    fma       T9, X9, const_uUvV, X1
+    fma       TA, X2, const_1mvV, XA
+    fma       TB, X3, const_uUtT, XB
+    fnms      TC, X4, const_00tT, XC
+    fnms      TD, X5, const_uUvV, XD
+    fnms      TE, XE, const_1mvV, X6
+    fnms      TF, XF, const_uUtT, X7
+
+    fm        b8, T8, const_11cc
+    fm        b9, T9, const_ddee
+    fm        bA, TA, const_rReE
+    fm        bB, TB, const_dDcC
+    fm        bC, TC, const_1mcC
+    fm        bD, TD, const_dDeE
+    fm        bE, TE, const_RREE
+    fm        bF, TF, const_DDCC
+    
+
+    // 2x8 butterflies of size 8 (32 even + 8 odd)
+    // -------------------------
+
+    fa        c0, b0, b4
+    fa        c1, b1, b5
+    fa        c2, b2, b6
+    fa        c3, b3, b7
+
+    fs        Y0, b0, b4
+    fs        Y1, b1, b5
+    fs        Y2, b2, b6
+    fs        Y3, b3, b7
+
+    shufb     Y4, Y0, Y0, shuf_BADC
+    shufb     Y5, Y1, Y1, shuf_BADC
+    shufb     Y6, Y2, Y2, shuf_BADC
+    shufb     Y7, Y3, Y3, shuf_BADC
+
+    fma       U4, Y4, const_00uU, Y0
+    fma       U5, Y1, const_1muU, Y5
+    fnms      U6, Y2, const_00uU, Y6
+    fnms      U7, Y7, const_1muU, Y3
+
+    fm        c4, U4, const_11dd
+    fm        c5, U5, const_rRdD
+    fm        c6, U6, const_1mdD
+    fm        c7, U7, const_RRDD
+
+    fa        c8, b8, bC
+    fa        c9, b9, bD
+    fa        cA, bA, bE
+    fa        cB, bB, bF
+
+    fs        Y8, b8, bC
+    fs        Y9, b9, bD
+    fs        YA, bA, bE
+    fs        YB, bB, bF
+
+    shufb     YC, Y8, Y8, shuf_BADC
+    shufb     YD, Y9, Y9, shuf_BADC
+    shufb     YE, YA, YA, shuf_BADC
+    shufb     YF, YB, YB, shuf_BADC
+
+    fma       UC, YC, const_00uU, Y8
+    fma       UD, Y9, const_1muU, YD
+    fnms      UE, YA, const_00uU, YE
+    fnms      UF, YF, const_1muU, YB
+
+    fm        cC, UC, const_11dd
+    fm        cD, UD, const_rRdD
+    fm        cE, UE, const_1mdD
+    fm        cF, UF, const_RRDD
+
+    // 4x4 butterflies of size 4 (32 even + 8 odd)
+    // -------------------------
+
+    fa        d0, c0, c2
+    fa        d1, c1, c3
+    fs        C0, c0, c2
+    fs        C1, c1, c3
+    shufb     V0, C0, C0, shuf_BADC
+    shufb     V1, C1, C1, shuf_BADC
+    fm        d2, C0, const_11rr
+    fma       d2, V0, const_00rR, d2
+    fm        d3, C1, const_00RR
+    fma       d3, V1, const_1mrR, d3
+
+    fa        d4, c4, c6
+    fa        d5, c5, c7
+    fs        C4, c4, c6
+    fs        C5, c5, c7
+    shufb     V4, C4, C4, shuf_BADC
+    shufb     V5, C5, C5, shuf_BADC
+    fm        d6, C4, const_11rr
+    fma       d6, V4, const_00rR, d6
+    fm        d7, C5, const_00RR
+    fma       d7, V5, const_1mrR, d7
+
+    fa        d8, c8, cA
+    fa        d9, c9, cB
+    fs        C8, c8, cA
+    fs        C9, c9, cB
+    shufb     V8, C8, C8, shuf_BADC
+    shufb     V9, C9, C9, shuf_BADC
+    fm        dA, C8, const_11rr
+    fma       dA, V8, const_00rR, dA
+    fm        dB, C9, const_00RR
+    fma       dB, V9, const_1mrR, dB
+
+    fa        dC, cC, cE
+    fa        dD, cD, cF
+    fs        CC, cC, cE
+    fs        CD, cD, cF
+    shufb     VC, CC, CC, shuf_BADC
+    shufb     VD, CD, CD, shuf_BADC
+    fm        dE, CC, const_11rr
+    fma       dE, VC, const_00rR, dE
+    fm        dF, CD, const_00RR
+    fma       dF, VD, const_1mrR, dF
+    
+    // 8x2 butterflies of size 2 (16 even + 16 odd)
+    // -------------------------
+
+    shufb     D0, d0, d1, shuf_ABDc
+    shufb     D1, d1, d0, shuf_ABDc
+    fa        e0, d0, d1
+    fs        e1, D0, D1
+
+    shufb     D2, d2, d3, shuf_ABDc
+    shufb     D3, d3, d2, shuf_ABDc
+    fa        e2, d2, d3
+    fs        e3, D2, D3
+
+    shufb     D4, d4, d5, shuf_ABDc
+    shufb     D5, d5, d4, shuf_ABDc
+    fa        e4, d4, d5
+    fs        e5, D4, D5
+
+    shufb     D6, d6, d7, shuf_ABDc
+    shufb     D7, d7, d6, shuf_ABDc
+    fa        e6, d6, d7
+    fs        e7, D6, D7
+
+    shufb     D8, d8, d9, shuf_ABDc
+    shufb     D9, d9, d8, shuf_ABDc
+    fa        e8, d8, d9
+    fs        e9, D8, D9
+
+    shufb     DA, dA, dB, shuf_ABDc
+    shufb     DB, dB, dA, shuf_ABDc
+    fa        eA, dA, dB
+    fs        eB, DA, DB
+
+    shufb     DC, dC, dD, shuf_ABDc
+    shufb     DD, dD, dC, shuf_ABDc
+    fa        eC, dC, dD
+    fs        eD, DC, DD
+
+    shufb     DE, dE, dF, shuf_ABDc
+    shufb     DF, dF, dE, shuf_ABDc
+    fa        eE, dE, dF
+    fs        eF, DE, DF
+
+    // 16x1 butterflies of size 1 (16 even + 16 odd)
+    // --------------------------
+
+    rotqbyi   E0, e0, 8
+    fma       f0, e0, const_11mm, E0
+
+    rotqbyi   E1, e1, 8
+    fma       f1, e1, const_11mm, E1
+
+    rotqbyi   E2, e2, 8
+    fma       f2, e2, const_11mm, E2
+
+    rotqbyi   E3, e3, 8
+    fma       f3, e3, const_11mm, E3
+
+    rotqbyi   E4, e4, 8
+    fma       f4, e4, const_11mm, E4
+
+    rotqbyi   E5, e5, 8
+    fma       f5, e5, const_11mm, E5
+
+    rotqbyi   E6, e6, 8
+    fma       f6, e6, const_11mm, E6
+
+    rotqbyi   E7, e7, 8
+    fma       f7, e7, const_11mm, E7
+
+    rotqbyi   E8, e8, 8
+    fma       f8, e8, const_11mm, E8
+
+    rotqbyi   E9, e9, 8
+    fma       f9, e9, const_11mm, E9
+
+    rotqbyi   EA, eA, 8
+    fma       fA, eA, const_11mm, EA
+
+    rotqbyi   EB, eB, 8
+    fma       fB, eB, const_11mm, EB
+
+    rotqbyi   EC, eC, 8
+    fma       fC, eC, const_11mm, EC
+
+    rotqbyi   ED, eD, 8
+    fma       fD, eD, const_11mm, ED
+
+    rotqbyi   EE, eE, 8
+    fma       fE, eE, const_11mm, EE
+
+    rotqbyi   EF, eF, 8
+    fma       fF, eF, const_11mm, EF
+
+    
+    ai        z, z, 256
+    
+    
+    // store 32 complex values
+    stqd      f0, -0x100(z)
+    stqd      f1, -0x0F0(z)
+    stqd      f2, -0x0E0(z)
+    stqd      f3, -0x0D0(z)
+    stqd      f4, -0x0C0(z)
+    stqd      f5, -0x0B0(z)
+    stqd      f6, -0x0A0(z)
+    stqd      f7, -0x090(z)
+    stqd      f8, -0x080(z)
+    stqd      f9, -0x070(z)
+    stqd      fA, -0x060(z)
+    stqd      fB, -0x050(z)
+    stqd      fC, -0x040(z)
+    stqd      fD, -0x030(z)
+    stqd      fE, -0x020(z)
+    stqd      fF, -0x010(z)
+
+
+    ai        cnt, cnt, -1
+
+    brnz      cnt, loop
+
+
+.endfunc
+
+
+
+
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_InvFFT32_DIT_rows_asm(f32 z[], u32 cnt)
+// 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+.cfunc void R2O_InvFFT32_DIT_rows_asm(f32 *z, u32 cnt)
+
+    .reg      a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, aA, aB, aC, aD, aE, aF
+    .reg      b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, bA, bB, bC, bD, bE, bF
+    .reg      c0, c1, c2, c3, c4, c5, c6, c7, c8, c9, cA, cB, cC, cD, cE, cF
+    .reg      d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, dA, dB, dC, dD, dE, dF
+    .reg      e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, eA, eB, eC, eD, eE, eF
+    .reg      f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, fA, fB, fC, fD, fE, fF
+
+    .reg      A0, A1, A2, A3, A4, A5, A6, A7, A8, A9, AA, AB, AC, AD, AE, AF
+    .reg      B1, B3, B5, B7, B9, BB, BD, BF, C2, C3, C6, C7, CA, CB, CE, CF
+    .reg      D4, D5, D6, D7, DC, DD, DE, DF, E8, E9, EA, EB, EC, ED, EE, EF
+
+    .reg      T2, T3, T6, T7, TA, TB, TE, TF
+    .reg      U4, U5, U6, U7, UC, UD, UE, UF
+    .reg      V8, V9, VA, VB, VC, VD, VE, VF
+
+    .reg      shuf_ABDC, shuf_BADC
+    il128     shuf_ABDC,  0x00010203_04050607_0C0D0E0F_08090A0B
+    il128     shuf_BADC,  0x04050607_00010203_0C0D0E0F_08090A0B
+
+    .reg      const_11mm
+    .reg      const_11m1
+    .reg      const_00m1, const_11rr, const_m1Rr
+    .reg      const_00Uu, const_m1Uu, const_11dd, const_RrDd, const_m1Dd, const_RRDD
+    .reg      const_00Tt, const_UuVv, const_m1Vv, const_UuTt, const_11cc, const_ddee
+    .reg      const_RrEe, const_DdCc, const_m1Cc, const_DdEe, const_RREE, const_DDCC
+
+
+    il128     const_11mm, 0x3F800000_3F800000_BF800000_BF800000   // (1,1,-1,-1)
+
+    il128     const_11m1, 0x3F800000_3F800000_BF800000_3F800000   // (1,1,-1,1)
+
+    il128     const_00m1, 0x00000000_00000000_BF800000_3F800000   // ( 0,0, -1, 1)
+    il128     const_11rr, 0x3F800000_3F800000_3F3504F3_3F3504F3   // ( 1,1, c4,c4)
+    il128     const_m1Rr, 0xBF800000_3F800000_BF3504F3_3F3504F3   // (-1,1,-c4,c4)
+
+    il128     const_00Uu, 0x00000000_00000000_BED413CD_3ED413CD   // (  0,  0,-t2, t2)
+    il128     const_m1Uu, 0xBF800000_3F800000_BED413CD_3ED413CD   // ( -1,  1,-t2, t2)
+    il128     const_11dd, 0x3F800000_3F800000_3F6C835E_3F6C835E   // (  1,  1, c2, c2)
+    il128     const_RrDd, 0xBF3504F3_3F3504F3_BF6C835E_3F6C835E   // (-c4, c4,-c2, c2)
+    il128     const_m1Dd, 0xBF800000_3F800000_BF6C835E_3F6C835E   // ( -1,  1,-c2, c2)
+    il128     const_RRDD, 0xBF3504F3_BF3504F3_BF6C835E_BF6C835E   // (-c4,-c4,-c2,-c2)
+
+    il128     const_00Tt, 0x00000000_00000000_BE4BAFAF_3E4BAFAF   // (  0,  0,-t1, t1)
+    il128     const_UuVv, 0xBED413CD_3ED413CD_BF2B0DC1_3F2B0DC1   // (-t2, t2,-t3, t3)
+    il128     const_m1Vv, 0xBF800000_3F800000_BF2B0DC1_3F2B0DC1   // ( -1,  1,-t3, t3)
+    il128     const_UuTt, 0xBED413CD_3ED413CD_BE4BAFAF_3E4BAFAF   // (-t2, t2,-t1, t1)
+    il128     const_11cc, 0x3F800000_3F800000_3F7B14BE_3F7B14BE   // (  1,  1, c1, c1)
+    il128     const_ddee, 0x3F6C835E_3F6C835E_3F54DB31_3F54DB31   // ( c2, c2, c3, c3)
+    il128     const_RrEe, 0xBF3504F3_3F3504F3_BF54DB31_3F54DB31   // (-c4, c4,-c3, c3)
+    il128     const_DdCc, 0xBF6C835E_3F6C835E_BF7B14BE_3F7B14BE   // (-c2, c2,-c1, c1)
+    il128     const_m1Cc, 0xBF800000_3F800000_BF7B14BE_3F7B14BE   // ( -1,  1,-c1, c1)
+    il128     const_DdEe, 0xBF6C835E_3F6C835E_BF54DB31_3F54DB31   // (-c2, c2,-c3, c3)
+    il128     const_RREE, 0xBF3504F3_BF3504F3_BF54DB31_BF54DB31   // (-c4,-c4,-c3,-c3)
+    il128     const_DDCC, 0xBF6C835E_BF6C835E_BF7B14BE_BF7B14BE   // (-c2,-c2,-c1,-c1)
+
+
+loop:   // 106 even + 81 odd
+
+    // load 32 complex values
+    lqd       a0, 0x00(z)
+    lqd       a1, 0x10(z)
+    lqd       a2, 0x20(z)
+    lqd       a3, 0x30(z)
+    lqd       a4, 0x40(z)
+    lqd       a5, 0x50(z)
+    lqd       a6, 0x60(z)
+    lqd       a7, 0x70(z)
+    lqd       a8, 0x80(z)
+    lqd       a9, 0x90(z)
+    lqd       aA, 0xA0(z)
+    lqd       aB, 0xB0(z)
+    lqd       aC, 0xC0(z)
+    lqd       aD, 0xD0(z)
+    lqd       aE, 0xE0(z)
+    lqd       aF, 0xF0(z)
+
+    // 16x1 butterflies of size 1 (16 even + 16 odd)
+    // --------------------------
+
+    rotqbyi   A0, a0, 8
+    fma       b0, a0, const_11mm, A0
+
+    rotqbyi   A1, a1, 8
+    fma       b1, a1, const_11mm, A1
+
+    rotqbyi   A2, a2, 8
+    fma       b2, a2, const_11mm, A2
+
+    rotqbyi   A3, a3, 8
+    fma       b3, a3, const_11mm, A3
+
+    rotqbyi   A4, a4, 8
+    fma       b4, a4, const_11mm, A4
+
+    rotqbyi   A5, a5, 8
+    fma       b5, a5, const_11mm, A5
+
+    rotqbyi   A6, a6, 8
+    fma       b6, a6, const_11mm, A6
+
+    rotqbyi   A7, a7, 8
+    fma       b7, a7, const_11mm, A7
+
+    rotqbyi   A8, a8, 8
+    fma       b8, a8, const_11mm, A8
+
+    rotqbyi   A9, a9, 8
+    fma       b9, a9, const_11mm, A9
+
+    rotqbyi   AA, aA, 8
+    fma       bA, aA, const_11mm, AA
+
+    rotqbyi   AB, aB, 8
+    fma       bB, aB, const_11mm, AB
+
+    rotqbyi   AC, aC, 8
+    fma       bC, aC, const_11mm, AC
+
+    rotqbyi   AD, aD, 8
+    fma       bD, aD, const_11mm, AD
+
+    rotqbyi   AE, aE, 8
+    fma       bE, aE, const_11mm, AE
+
+    rotqbyi   AF, aF, 8
+    fma       bF, aF, const_11mm, AF
+
+    // 8x2 butterflies of size 2 (16 even + 8 odd)
+    // -------------------------
+
+    shufb     B1, b1, b1, shuf_ABDC
+    fma       c0, B1, const_11m1, b0
+    fnms      c1, B1, const_11m1, b0
+
+    shufb     B3, b3, b3, shuf_ABDC
+    fma       c2, B3, const_11m1, b2
+    fnms      c3, B3, const_11m1, b2
+
+    shufb     B5, b5, b5, shuf_ABDC
+    fma       c4, B5, const_11m1, b4
+    fnms      c5, B5, const_11m1, b4
+
+    shufb     B7, b7, b7, shuf_ABDC
+    fma       c6, B7, const_11m1, b6
+    fnms      c7, B7, const_11m1, b6
+
+    shufb     B9, b9, b9, shuf_ABDC
+    fma       c8, B9, const_11m1, b8
+    fnms      c9, B9, const_11m1, b8
+
+    shufb     BB, bB, bB, shuf_ABDC
+    fma       cA, BB, const_11m1, bA
+    fnms      cB, BB, const_11m1, bA
+
+    shufb     BD, bD, bD, shuf_ABDC
+    fma       cC, BD, const_11m1, bC
+    fnms      cD, BD, const_11m1, bC
+
+    shufb     BF, bF, bF, shuf_ABDC
+    fma       cE, BF, const_11m1, bE
+    fnms      cF, BF, const_11m1, bE
+
+    // 4x4 butterflies of size 4 (24 even + 8 odd)
+    // -------------------------
+
+    shufb     C2, c2, c2, shuf_BADC
+    shufb     C3, c3, c3, shuf_BADC
+    fma       T2, C2, const_00m1, c2
+    fnms      T3, c3, const_00m1, C3
+    fma       d0, T2, const_11rr, c0
+    fma       d1, T3, const_m1Rr, c1
+    fnms      d2, T2, const_11rr, c0
+    fnms      d3, T3, const_m1Rr, c1
+    
+    shufb     C6, c6, c6, shuf_BADC
+    shufb     C7, c7, c7, shuf_BADC
+    fma       T6, C6, const_00m1, c6
+    fnms      T7, c7, const_00m1, C7
+    fma       d4, T6, const_11rr, c4
+    fma       d5, T7, const_m1Rr, c5
+    fnms      d6, T6, const_11rr, c4
+    fnms      d7, T7, const_m1Rr, c5
+    
+    shufb     CA, cA, cA, shuf_BADC
+    shufb     CB, cB, cB, shuf_BADC
+    fma       TA, CA, const_00m1, cA
+    fnms      TB, cB, const_00m1, CB
+    fma       d8, TA, const_11rr, c8
+    fma       d9, TB, const_m1Rr, c9
+    fnms      dA, TA, const_11rr, c8
+    fnms      dB, TB, const_m1Rr, c9
+    
+    shufb     CE, cE, cE, shuf_BADC
+    shufb     CF, cF, cF, shuf_BADC
+    fma       TE, CE, const_00m1, cE
+    fnms      TF, cF, const_00m1, CF
+    fma       dC, TE, const_11rr, cC
+    fma       dD, TF, const_m1Rr, cD
+    fnms      dE, TE, const_11rr, cC
+    fnms      dF, TF, const_m1Rr, cD
+    
+    // 2x8 butterflies of size 8 (24 even + 8 odd)
+    // -------------------------
+
+    shufb     D4, d4, d4, shuf_BADC
+    shufb     D5, d5, d5, shuf_BADC
+    shufb     D6, d6, d6, shuf_BADC
+    shufb     D7, d7, d7, shuf_BADC
+
+    fma       U4, D4, const_00Uu, d4
+    fma       U5, d5, const_m1Uu, D5
+    fnms      U6, d6, const_00Uu, D6
+    fnms      U7, D7, const_m1Uu, d7
+
+    fma       e0, U4, const_11dd, d0
+    fma       e1, U5, const_RrDd, d1
+    fma       e2, U6, const_m1Dd, d2
+    fma       e3, U7, const_RRDD, d3
+    fnms      e4, U4, const_11dd, d0
+    fnms      e5, U5, const_RrDd, d1
+    fnms      e6, U6, const_m1Dd, d2
+    fnms      e7, U7, const_RRDD, d3
+
+    shufb     DC, dC, dC, shuf_BADC
+    shufb     DD, dD, dD, shuf_BADC
+    shufb     DE, dE, dE, shuf_BADC
+    shufb     DF, dF, dF, shuf_BADC
+
+    fma       UC, DC, const_00Uu, dC
+    fma       UD, dD, const_m1Uu, DD
+    fnms      UE, dE, const_00Uu, DE
+    fnms      UF, DF, const_m1Uu, dF
+
+    fma       e8, UC, const_11dd, d8
+    fma       e9, UD, const_RrDd, d9
+    fma       eA, UE, const_m1Dd, dA
+    fma       eB, UF, const_RRDD, dB
+    fnms      eC, UC, const_11dd, d8
+    fnms      eD, UD, const_RrDd, d9
+    fnms      eE, UE, const_m1Dd, dA
+    fnms      eF, UF, const_RRDD, dB
+
+    // 1x16 butterflies of size 16 (24 even + 8 odd)
+    // ---------------------------
+
+    shufb     E8, e8, e8, shuf_BADC
+    shufb     E9, e9, e9, shuf_BADC
+    shufb     EA, eA, eA, shuf_BADC
+    shufb     EB, eB, eB, shuf_BADC
+    shufb     EC, eC, eC, shuf_BADC
+    shufb     ED, eD, eD, shuf_BADC
+    shufb     EE, eE, eE, shuf_BADC
+    shufb     EF, eF, eF, shuf_BADC
+
+    fma       V8, E8, const_00Tt, e8
+    fma       V9, E9, const_UuVv, e9
+    fma       VA, eA, const_m1Vv, EA
+    fma       VB, eB, const_UuTt, EB
+    fnms      VC, eC, const_00Tt, EC
+    fnms      VD, eD, const_UuVv, ED
+    fnms      VE, EE, const_m1Vv, eE
+    fnms      VF, EF, const_UuTt, eF
+
+    fma       f0, V8, const_11cc, e0
+    fma       f1, V9, const_ddee, e1
+    fma       f2, VA, const_RrEe, e2
+    fma       f3, VB, const_DdCc, e3
+    fma       f4, VC, const_m1Cc, e4
+    fma       f5, VD, const_DdEe, e5
+    fma       f6, VE, const_RREE, e6
+    fma       f7, VF, const_DDCC, e7
+    fnms      f8, V8, const_11cc, e0
+    fnms      f9, V9, const_ddee, e1
+    fnms      fA, VA, const_RrEe, e2
+    fnms      fB, VB, const_DdCc, e3
+    fnms      fC, VC, const_m1Cc, e4
+    fnms      fD, VD, const_DdEe, e5
+    fnms      fE, VE, const_RREE, e6
+    fnms      fF, VF, const_DDCC, e7
+
+
+    ai        z, z, 256
+    
+    
+    // store 32 complex values
+    stqd      f0, -0x100(z)
+    stqd      f1, -0x0F0(z)
+    stqd      f2, -0x0E0(z)
+    stqd      f3, -0x0D0(z)
+    stqd      f4, -0x0C0(z)
+    stqd      f5, -0x0B0(z)
+    stqd      f6, -0x0A0(z)
+    stqd      f7, -0x090(z)
+    stqd      f8, -0x080(z)
+    stqd      f9, -0x070(z)
+    stqd      fA, -0x060(z)
+    stqd      fB, -0x050(z)
+    stqd      fC, -0x040(z)
+    stqd      fD, -0x030(z)
+    stqd      fE, -0x020(z)
+    stqd      fF, -0x010(z)
+
+
+    ai        cnt, cnt, -1
+
+    brnz      cnt, loop
+
+
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_FFT32_DIF_cols_asm(f32 *z, u32 cnt)
+// 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_FFT32_DIF_cols_asm(f32 *z, u32 cnt)
+
+    .reg      z00, z01, z02, z03, z04, z05, z06, z07, z08, z09, z0A, z0B, z0C, z0D, z0E, z0F     
+    .reg      z10, z11, z12, z13, z14, z15, z16, z17, z18, z19, z1A, z1B, z1C, z1D, z1E, z1F     
+    .reg      Z00, Z01, Z02, Z03, Z04, Z05, Z06, Z07, Z08, Z09, Z0A, Z0B, Z0C, Z0D, Z0E, Z0F     
+    .reg      Z10, Z11, Z12, Z13, Z14, Z15, Z16, Z17, Z18, Z19, Z1A, Z1B, Z1C, Z1D, Z1E, Z1F     
+    .reg      c1, c2, c3, c4, c5, c6, c7, s1, s2, s3, s4, s5, s6, s7
+    .reg      t1, t2, t3, t4, t5, t6, t7, F, G, shuf_BaDc
+    .reg      C71, C62, C53, C31, C3612, c12, c14, c24, c124, sign_bit
+    
+    .extern   shuf_BaDc
+    lqa       shuf_BaDc, shuf_BaDc
+
+    il128     s1, 0x3E47C5C2_BE47C5C2_3E47C5C2_BE47C5C2
+    il128     s2, 0x3EC3EF15_BEC3EF15_3EC3EF15_BEC3EF15
+    il128     s3, 0x3F0E39DA_BF0E39DA_3F0E39DA_BF0E39DA
+    il128     s4, 0x3F3504F3_BF3504F3_3F3504F3_BF3504F3
+    il128     s5, 0x3F54DB31_BF54DB31_3F54DB31_BF54DB31
+    il128     s6, 0x3F6C835E_BF6C835E_3F6C835E_BF6C835E
+    il128     s7, 0x3F7B14BE_BF7B14BE_3F7B14BE_BF7B14BE
+    
+    il128     c1, 0x3F7B14BE_3F7B14BE_3F7B14BE_3F7B14BE
+    il128     c2, 0x3F6C835E_3F6C835E_3F6C835E_3F6C835E
+    il128     c3, 0x3F54DB31_3F54DB31_3F54DB31_3F54DB31
+    il128     c4, 0x3F3504F3_3F3504F3_3F3504F3_3F3504F3
+    il128     c5, 0x3F0E39DA_3F0E39DA_3F0E39DA_3F0E39DA
+    il128     c6, 0x3EC3EF15_3EC3EF15_3EC3EF15_3EC3EF15
+    il128     c7, 0x3E47C5C2_3E47C5C2_3E47C5C2_3E47C5C2
+
+    il128     t1, 0x3E4BAFAF_BE4BAFAF_3E4BAFAF_BE4BAFAF
+    il128     t2, 0x3ED413CD_BED413CD_3ED413CD_BED413CD
+    il128     t3, 0x3F2B0DC1_BF2B0DC1_3F2B0DC1_BF2B0DC1
+    il128     t4, 0x3F800000_BF800000_3F800000_BF800000
+    il128     t5, 0x3FBF90C7_BFBF90C7_3FBF90C7_BFBF90C7
+    il128     t6, 0x401A827A_C01A827A_401A827A_C01A827A
+    il128     t7, 0x40A0DFF7_C0A0DFF7_40A0DFF7_C0A0DFF7
+    
+    ilhu      sign_bit, 0x8000
+    andc      C71, t1, sign_bit                                 // C71   = c7 / c1 = |t1|
+    andc      C62, t2, sign_bit                                 // C62   = c6 / c2 = |t2|
+    andc      C53, t3, sign_bit                                 // C53   = c5 / c3 = |t3|
+    il128     C31,   0x3F5906BD_3F5906BD_3F5906BD_3F5906BD      // C31   = c3 / c1
+    il128     C3612, 0x3EB3CA5E_3EB3CA5E_3EB3CA5E_3EB3CA5E      // C3612 = (c3 * c6) / (c1 * c2)
+    il128     c12,   0x3F67F7F8_3F67F7F8_3F67F7F8_3F67F7F8      // c12   = c1 * c2
+    il128     c14,   0x3F318A86_3F318A86_3F318A86_3F318A86      // c14   = c1 * c4
+    il128     c24,   0x3F273D75_3F273D75_3F273D75_3F273D75      // c24   = c2 * c4
+    il128     c124,  0x3F2406CF_3F2406CF_3F2406CF_3F2406CF      // c124  = c1 * c2 * c4
+    
+    
+
+loop:   // 196 even + 129 odd
+
+    // load 64 complex values (2 columns of 32)
+    lqd       z00, 0x0000(z)
+    lqd       z01, 0x0100(z)
+    lqd       z02, 0x0200(z)
+    lqd       z03, 0x0300(z)
+    lqd       z04, 0x0400(z)
+    lqd       z05, 0x0500(z)
+    lqd       z06, 0x0600(z)
+    lqd       z07, 0x0700(z)
+    lqd       z08, 0x0800(z)
+    lqd       z09, 0x0900(z)
+    lqd       z0A, 0x0A00(z)
+    lqd       z0B, 0x0B00(z)
+    lqd       z0C, 0x0C00(z)
+    lqd       z0D, 0x0D00(z)
+    lqd       z0E, 0x0E00(z)
+    lqd       z0F, 0x0F00(z)
+    lqd       z10, 0x1000(z)
+    lqd       z11, 0x1100(z)
+    lqd       z12, 0x1200(z)
+    lqd       z13, 0x1300(z)
+    lqd       z14, 0x1400(z)
+    lqd       z15, 0x1500(z)
+    lqd       z16, 0x1600(z)
+    lqd       z17, 0x1700(z)
+    lqd       z18, 0x1800(z)
+    lqd       z19, 0x1900(z)
+    lqd       z1A, 0x1A00(z)
+    lqd       z1B, 0x1B00(z)
+    lqd       z1C, 0x1C00(z)
+    lqd       z1D, 0x1D00(z)
+    lqd       z1E, 0x1E00(z)
+    lqd       z1F, 0x1F00(z)
+
+    
+    
+    // 1x16 butterflies of size 16 (46 even + 16 odd)
+    // ---------------------------
+
+    // z00,z10  z01,z11  z02,z12  z03,z13  z04,z14  z05,z15  z06,z16  z07,z17  z08,z18  z09,z19  z0A,z1A  z0B,z1B  z0C,z1C  z0D,z1D  z0E,z1E  z0F,z1F   
+
+
+    fa        Z00, z00, z10
+    fs        Z10, z00, z10
+     
+    fs        F,   z01, z11
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        Z01, z01, z11
+    fma       Z11, t1,  G,   F              // *c1
+    
+    fs        F,   z02, z12
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        Z02, z02, z12
+    fma       Z12, t2,  G,   F              // *c2
+     
+    fs        F,   z03, z13
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        Z03, z03, z13
+    fma       Z13, t3,  G,   F              // *c3
+     
+    fs        F,   z04, z14
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        Z04, z04, z14
+    fma       Z14, t4,  G,   F              // *c4
+     
+    fs        F,   z05, z15
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        Z05, z05, z15
+    fma       Z15, t5,  G,   F              // *c5
+     
+    fs        F,   z06, z16
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        Z06, z06, z16
+    fma       Z16, t6,  G,   F              // *c6
+     
+    fs        F,   z07, z17
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        Z07, z07, z17
+    fma       Z17, t7,  G,   F              // *c7
+    
+    shufb     F,   z08, z18, shuf_BaDc
+    shufb     G,   z18, z08, shuf_BaDc
+    fa        Z08, z08, z18
+    fs        Z18, F,   G
+     
+    fs        F,   z09, z19
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        Z09, z09, z19
+    fms       Z19, t7,  G,   F              // *c7
+     
+    fs        F,   z0A, z1A
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        Z0A, z0A, z1A
+    fms       Z1A, t6,  G,   F              // *c6
+     
+    fs        F,   z0B, z1B
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        Z0B, z0B, z1B
+    fms       Z1B, t5,  G,   F              // *c5
+     
+    fs        F,   z0C, z1C
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        Z0C, z0C, z1C
+    fms       Z1C, t4,  G,   F              // *c4
+     
+    fs        F,   z0D, z1D
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        Z0D, z0D, z1D
+    fms       Z1D, t3,  G,   F              // *c3
+     
+    fs        F,   z0E, z1E
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        Z0E, z0E, z1E
+    fms       Z1E, t2,  G,   F              // *c2
+     
+    fs        F,   z0F, z1F
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        Z0F, z0F, z1F
+    fms       Z1F, t1,  G,   F              // *c1
+    
+    
+    
+    
+    // 2x8 butterflies of size 8 (44 even + 16 odd)
+    // -------------------------
+
+    // z00,z08  z01,z09, z02,z0A  z03,z0B, z04,z0C  z05,z0D, z06,z0E  z07,z0F 
+    // z10,z18  z11,z19, z12,z1A  z13,z1B, z14,z1C  z15,z1D, z16,z1E  z17,z1F  
+    
+    fa        z00, Z00, Z08
+    fs        z08, Z00, Z08
+     
+    fs        F,   Z01, Z09
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        z01, Z01, Z09
+    fma       z09, t2,  G,   F              // *c2
+    
+    fs        F,   Z02, Z0A
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        z02, Z02, Z0A
+    fma       z0A, t4,  G,   F              // *c4
+     
+    fs        F,   Z03, Z0B
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        z03, Z03, Z0B
+    fma       z0B, t6,  G,   F              // *c6
+    
+    shufb     F,   Z04, Z0C, shuf_BaDc
+    shufb     G,   Z0C, Z04, shuf_BaDc
+    fa        z04, Z04, Z0C
+    fs        z0C, F,   G
+     
+    fs        F,   Z05, Z0D
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        z05, Z05, Z0D
+    fms       z0D, t6,  G,   F              // *c6
+     
+    fs        F,   Z06, Z0E
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        z06, Z06, Z0E
+    fms       z0E, t4,  G,   F              // *c4
+     
+    fs        F,   Z07, Z0F
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        z07, Z07, Z0F
+    fms       z0F, t2,  G,   F              // *c2
+     
+    fa        z10, Z10, Z18
+    fs        z18, Z10, Z18
+
+    fnms      F,   C71, Z19, Z11            // *c1
+    shufb     G,   F,   F,   shuf_BaDc      // *c1
+    fma       z11, C71, Z19, Z11            // *c1
+    fma       z19, t2,  G,   F              // *c1*c2
+     
+    fnms      F,   C62, Z1A, Z12            // *c2
+    shufb     G,   F,   F,   shuf_BaDc      // *c2
+    fma       z12, C62, Z1A, Z12            // *c2
+    fma       z1A, t4,  G,   F              // *c2*c4
+     
+    fnms      F,   C53, Z1B, Z13            // *c3
+    shufb     G,   F,   F,   shuf_BaDc      // *c3
+    fma       z13, C53, Z1B, Z13            // *c3
+    fma       z1B, t6,  G,   F              // *c3*c6
+     
+    shufb     F,   Z14, Z1C, shuf_BaDc      // *c4
+    shufb     G,   Z1C, Z14, shuf_BaDc      // *c4
+    fa        z14, Z14, Z1C                 // *c4
+    fs        z1C, F,   G                   // *c4
+    
+    fms       F,   C53, Z15, Z1D            // *c3
+    shufb     G,   F,   F,   shuf_BaDc      // *c3
+    fma       z15, C53, Z15, Z1D            // *c3
+    fms       z1D, t6,  G,   F              // *c3*c6
+     
+    fms       F,   C62, Z16, Z1E            // *c2
+    shufb     G,   F,   F,   shuf_BaDc      // *c2
+    fma       z16, C62, Z16, Z1E            // *c2
+    fms       z1E, t4,  G,   F              // *c2*c4
+     
+    fms       F,   C71, Z17, Z1F            // *c1
+    shufb     G,   F,   F,   shuf_BaDc      // *c1
+    fma       z17, C71, Z17, Z1F            // *c1
+    fms       z1F, t2,  G,   F              // *c1*c2
+
+    
+
+    // 4x4 butterflies of size 4 (40 even + 16 odd)
+    // -------------------------
+
+    // z00,z04  z01,z05  z02,z06  z03,z07 
+    // z08,z0C  z09,z0D  z0A,z0E  z0B,z0F 
+    // z10,z14  z11,z15  z12,z16  z13,z17 
+    // z18,z1C  z19,z1D  z1A,z1E  z1B,z1F 
+    
+    
+    fa        Z00, z00, z04
+    fs        Z04, z00, z04
+     
+    fs        F,   z01, z05
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        Z01, z01, z05
+    fma       Z05, t4,  G,   F              // *c4
+     
+    shufb     F,   z02, z06, shuf_BaDc
+    shufb     G,   z06, z02, shuf_BaDc
+    fa        Z02, z02, z06
+    fs        Z06, F,   G
+    
+    fs        F,   z03, z07
+    shufb     G,   F,   F,   shuf_BaDc
+    fa        Z03, z03, z07
+    fms       Z07, t4,  G,   F              // *c4
+    
+    fa        Z08, z08, z0C
+    fs        Z0C, z08, z0C  
+     
+    fnms      F,   C62, z0D, z09            // *c2
+    shufb     G,   F,   F,   shuf_BaDc      // *c2
+    fma       Z09, C62, z0D, z09            // *c2
+    fma       Z0D, t4,  G,   F              // *c2*c4
+     
+    shufb     F,   z0A, z0E, shuf_BaDc      // *c4
+    shufb     G,   z0E, z0A, shuf_BaDc      // *c4
+    fa        Z0A, z0A, z0E                 // *c4
+    fs        Z0E, F,   G                   // *c4
+     
+    fms       F,   C62, z0B, z0F            // *c2
+    shufb     G,   F,   F,   shuf_BaDc      // *c2
+    fma       Z0B, C62, z0B, z0F            // *c2
+    fms       Z0F, t4,  G,   F              // *c2*c4
+    
+    fma       Z10, c4,  z14, z10
+    fnms      Z14, c4,  z14, z10
+     
+    fnms      F,   C31, z15, z11            // *c1
+    shufb     G,   F,   F,   shuf_BaDc      // *c1
+    fma       Z11, C31, z15, z11            // *c1
+    fma       Z15, t4,  G,   F              // *c1*c4
+     
+    shufb     F,   z12, z16, shuf_BaDc      // *c2
+    shufb     G,   z16, z12, shuf_BaDc      // *c2
+    fa        Z12, z12, z16                 // *c2
+    fs        Z16, F,   G                   // *c2
+     
+    fms       F,   C31, z13, z17            // *c1
+    shufb     G,   F,   F,   shuf_BaDc      // *c1
+    fma       Z13, C31, z13, z17            // *c1
+    fms       Z17, t4,  G,   F              // *c1*c4
+     
+    fma       Z18, c4,  z1C, z18
+    fnms      Z1C, c4,  z1C, z18
+     
+    fnms      F,  C3612,z1D, z19            // *c1*c2
+    shufb     G,   F,   F,   shuf_BaDc      // *c1*c2
+    fma       Z19,C3612,z1D, z19            // *c1*c2
+    fma       Z1D, t4,  G,   F              // *c1*c2*c4
+    
+    shufb     F,   z1A, z1E, shuf_BaDc      // *c2*c4
+    shufb     G,   z1E, z1A, shuf_BaDc      // *c2*c4
+    fa        Z1A, z1A, z1E                 // *c2*c4
+    fs        Z1E, F,   G                   // *c2*c4
+     
+    fms       F,  C3612,z1B, z1F            // *c1*c2
+    shufb     G,   F,   F,   shuf_BaDc      // *c1*c2
+    fma       Z1B,C3612,z1B, z1F            // *c1*c2
+    fms       Z1F, t4,  G,   F              // *c1*c2*c4
+    
+    
+    
+    // 8x2 butterflies of size 2 (32 even + 16 odd)
+    // -------------------------
+
+    // z00,z02  z01,z03
+    // z04,z06  z05,z07 
+    // z08,z0A  z09,z0B
+    // z0C,z0E  z0D,z0F 
+    // z10,z12  z11,z13
+    // z14,z16  z15,z17 
+    // z18,z1A  z19,z1B
+    // z1C,z1E  z1D,z1F 
+    
+    fa        z00, Z00, Z02
+    fs        z02, Z00, Z02
+     
+    shufb     F,   Z01, Z03, shuf_BaDc
+    shufb     G,   Z03, Z01, shuf_BaDc
+    fa        z01, Z01, Z03
+    fs        z03, F,   G
+     
+    fa        z04, Z04, Z06
+    fs        z06, Z04, Z06
+     
+    shufb     F,   Z05, Z07, shuf_BaDc      // *c4
+    shufb     G,   Z07, Z05, shuf_BaDc      // *c4
+    fa        z05, Z05, Z07                 // *c4
+    fs        z07, F,   G                   // *c4
+     
+    fma       z08, c4,  Z0A, Z08
+    fnms      z0A, c4,  Z0A, Z08
+     
+    shufb     F,   Z09, Z0B, shuf_BaDc      // *c2
+    shufb     G,   Z0B, Z09, shuf_BaDc      // *c2
+    fa        z09, Z09, Z0B                 // *c2
+    fs        z0B, F,   G                   // *c2
+     
+    fma       z0C, c4,  Z0E, Z0C
+    fnms      z0E, c4,  Z0E, Z0C
+     
+    shufb     F,   Z0D, Z0F, shuf_BaDc      // *c2*c4
+    shufb     G,   Z0F, Z0D, shuf_BaDc      // *c2*c4
+    fa        z0D, Z0D, Z0F                 // *c2*c4
+    fs        z0F, F,   G                   // *c2*c4
+    
+    fma       z10, c2,  Z12, Z10
+    fnms      z12, c2,  Z12, Z10
+     
+    shufb     F,   Z11, Z13, shuf_BaDc      // *c1
+    shufb     G,   Z13, Z11, shuf_BaDc      // *c1
+    fa        z11, Z11, Z13                 // *c1
+    fs        z13, F,   G                   // *c1
+     
+    fma       z14, c2,  Z16, Z14
+    fnms      z16, c2,  Z16, Z14
+     
+    shufb     F,   Z15, Z17, shuf_BaDc      // *c1*c4
+    shufb     G,   Z17, Z15, shuf_BaDc      // *c1*c4
+    fa        z15, Z15, Z17                 // *c1*c4
+    fs        z17, F,   G                   // *c1*c4
+     
+    fma       z18, c24, Z1A, Z18
+    fnms      z1A, c24, Z1A, Z18
+    
+    shufb     F,   Z19, Z1B, shuf_BaDc      // *c1*c2
+    shufb     G,   Z1B, Z19, shuf_BaDc      // *c1*c2
+    fa        z19, Z19, Z1B                 // *c1*c2
+    fs        z1B, F,   G                   // *c1*c2
+     
+    fma       z1C, c24, Z1E, Z1C
+    fnms      z1E, c24, Z1E, Z1C
+     
+    shufb     F,   Z1D, Z1F, shuf_BaDc      // *c1*c2*c4
+    shufb     G,   Z1F, Z1D, shuf_BaDc      // *c1*c2*c4
+    fa        z1D, Z1D, Z1F                 // *c1*c2*c4
+    fs        z1F, F,   G                   // *c1*c2*c4
+    
+
+
+    // 16x1 butterflies of size 1 (32 even + 0 odd)
+    // --------------------------
+
+    // z00,z01
+    // z02,z03
+    // z04,z05
+    // z06,z07
+    // z08,z09
+    // z0A,z0B
+    // z0C,z0D
+    // z0E,z0F
+    // z10,z11
+    // z12,z13
+    // z14,z15
+    // z16,z17
+    // z18,z19
+    // z1A,z1B
+    // z1C,z1D
+    // z1E,z1F
+
+    fa        Z00, z00, z01
+    fs        Z01, z00, z01
+     
+    fa        Z02, z02, z03
+    fs        Z03, z02, z03
+     
+    fma       Z04, c4,  z05, z04
+    fnms      Z05, c4,  z05, z04
+     
+    fma       Z06, c4,  z07, z06
+    fnms      Z07, c4,  z07, z06
+     
+    fma       Z08, c2,  z09, z08
+    fnms      Z09, c2,  z09, z08
+     
+    fma       Z0A, c2,  z0B, z0A
+    fnms      Z0B, c2,  z0B, z0A
+     
+    fma       Z0C, c24, z0D, z0C
+    fnms      Z0D, c24, z0D, z0C
+     
+    fma       Z0E, c24, z0F, z0E
+    fnms      Z0F, c24, z0F, z0E
+     
+    fma       Z10, c1,  z11, z10
+    fnms      Z11, c1,  z11, z10
+     
+    fma       Z12, c1,  z13, z12
+    fnms      Z13, c1,  z13, z12
+     
+    fma       Z14, c14, z15, z14
+    fnms      Z15, c14, z15, z14
+     
+    fma       Z16, c14, z17, z16
+    fnms      Z17, c14, z17, z16
+     
+    fma       Z18, c12, z19, z18
+    fnms      Z19, c12, z19, z18
+     
+    fma       Z1A, c12, z1B, z1A
+    fnms      Z1B, c12, z1B, z1A
+     
+    fma       Z1C, c124,z1D, z1C
+    fnms      Z1D, c124,z1D, z1C
+     
+    fma       Z1E, c124,z1F, z1E
+    fnms      Z1F, c124,z1F, z1E
+    
+    
+    
+    ai        z, z, 16
+    
+    
+    // store 64 transformed values
+    stqd      Z00,-0x0010(z)
+    stqd      Z01, 0x00F0(z)
+    stqd      Z02, 0x01F0(z)
+    stqd      Z03, 0x02F0(z)
+    stqd      Z04, 0x03F0(z)
+    stqd      Z05, 0x04F0(z)
+    stqd      Z06, 0x05F0(z)
+    stqd      Z07, 0x06F0(z)
+    stqd      Z08, 0x07F0(z)
+    stqd      Z09, 0x08F0(z)
+    stqd      Z0A, 0x09F0(z)
+    stqd      Z0B, 0x0AF0(z)
+    stqd      Z0C, 0x0BF0(z)
+    stqd      Z0D, 0x0CF0(z)
+    stqd      Z0E, 0x0DF0(z)
+    stqd      Z0F, 0x0EF0(z)
+    stqd      Z10, 0x0FF0(z)
+    stqd      Z11, 0x10F0(z)
+    stqd      Z12, 0x11F0(z)
+    stqd      Z13, 0x12F0(z)
+    stqd      Z14, 0x13F0(z)
+    stqd      Z15, 0x14F0(z)
+    stqd      Z16, 0x15F0(z)
+    stqd      Z17, 0x16F0(z)
+    stqd      Z18, 0x17F0(z)
+    stqd      Z19, 0x18F0(z)
+    stqd      Z1A, 0x19F0(z)
+    stqd      Z1B, 0x1AF0(z)
+    stqd      Z1C, 0x1BF0(z)
+    stqd      Z1D, 0x1CF0(z)
+    stqd      Z1E, 0x1DF0(z)
+    stqd      Z1F, 0x1EF0(z)
+
+
+
+    ai        cnt, cnt, -2
+
+    brnz      cnt, loop
+
+
+.endfunc
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_InvFFT32_DIT_cols_asm(f32 z[], u32 cnt)
+// 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_InvFFT32_DIT_cols_asm(f32 *z, u32 cnt)
+
+    .reg      z00, z01, z02, z03, z04, z05, z06, z07, z08, z09, z0A, z0B, z0C, z0D, z0E, z0F     
+    .reg      z10, z11, z12, z13, z14, z15, z16, z17, z18, z19, z1A, z1B, z1C, z1D, z1E, z1F     
+    .reg      Z00, Z01, Z02, Z03, Z04, Z05, Z06, Z07, Z08, Z09, Z0A, Z0B, Z0C, Z0D, Z0E, Z0F     
+    .reg      Z10, Z11, Z12, Z13, Z14, Z15, Z16, Z17, Z18, Z19, Z1A, Z1B, Z1C, Z1D, Z1E, Z1F     
+    .reg      c1, c2, c3, c4, c5, c6, c7, s1, s2, s3, s4, s5, s6, s7, s8
+    .reg      t1, t2, t3, t4, t5, t6, t7, T, U, shuf_BaDc
+    
+    .extern   shuf_BaDc
+    lqa       shuf_BaDc, shuf_BaDc
+
+    il128     s1, 0xBE47C5C2_3E47C5C2_BE47C5C2_3E47C5C2
+    il128     s2, 0xBEC3EF15_3EC3EF15_BEC3EF15_3EC3EF15
+    il128     s3, 0xBF0E39DA_3F0E39DA_BF0E39DA_3F0E39DA
+    il128     s4, 0xBF3504F3_3F3504F3_BF3504F3_3F3504F3
+    il128     s5, 0xBF54DB31_3F54DB31_BF54DB31_3F54DB31
+    il128     s6, 0xBF6C835E_3F6C835E_BF6C835E_3F6C835E
+    il128     s7, 0xBF7B14BE_3F7B14BE_BF7B14BE_3F7B14BE
+    il128     s8, 0xBF800000_3F800000_BF800000_3F800000
+
+    il128     c1, 0x3F7B14BE_3F7B14BE_3F7B14BE_3F7B14BE
+    il128     c2, 0x3F6C835E_3F6C835E_3F6C835E_3F6C835E
+    il128     c3, 0x3F54DB31_3F54DB31_3F54DB31_3F54DB31
+    il128     c4, 0x3F3504F3_3F3504F3_3F3504F3_3F3504F3
+    il128     c5, 0x3F0E39DA_3F0E39DA_3F0E39DA_3F0E39DA
+    il128     c6, 0x3EC3EF15_3EC3EF15_3EC3EF15_3EC3EF15
+    il128     c7, 0x3E47C5C2_3E47C5C2_3E47C5C2_3E47C5C2
+
+    il128     t1, 0xBE4BAFAF_3E4BAFAF_BE4BAFAF_3E4BAFAF
+    il128     t2, 0xBED413CD_3ED413CD_BED413CD_3ED413CD
+    il128     t3, 0xBF2B0DC1_3F2B0DC1_BF2B0DC1_3F2B0DC1
+    il128     t4, 0xBF800000_3F800000_BF800000_3F800000
+    il128     t5, 0xBFBF90C7_3FBF90C7_BFBF90C7_3FBF90C7
+    il128     t6, 0xC01A827A_401A827A_C01A827A_401A827A
+    il128     t7, 0xC0A0DFF7_40A0DFF7_C0A0DFF7_40A0DFF7
+
+    // note that s8 = t4
+
+loop:   // 196 even + 114 odd
+
+    // load 64 complex values (2 columns of 32)
+    lqd       z00, 0x0000(z)
+    lqd       z01, 0x0100(z)
+    lqd       z02, 0x0200(z)
+    lqd       z03, 0x0300(z)
+    lqd       z04, 0x0400(z)
+    lqd       z05, 0x0500(z)
+    lqd       z06, 0x0600(z)
+    lqd       z07, 0x0700(z)
+    lqd       z08, 0x0800(z)
+    lqd       z09, 0x0900(z)
+    lqd       z0A, 0x0A00(z)
+    lqd       z0B, 0x0B00(z)
+    lqd       z0C, 0x0C00(z)
+    lqd       z0D, 0x0D00(z)
+    lqd       z0E, 0x0E00(z)
+    lqd       z0F, 0x0F00(z)
+    lqd       z10, 0x1000(z)
+    lqd       z11, 0x1100(z)
+    lqd       z12, 0x1200(z)
+    lqd       z13, 0x1300(z)
+    lqd       z14, 0x1400(z)
+    lqd       z15, 0x1500(z)
+    lqd       z16, 0x1600(z)
+    lqd       z17, 0x1700(z)
+    lqd       z18, 0x1800(z)
+    lqd       z19, 0x1900(z)
+    lqd       z1A, 0x1A00(z)
+    lqd       z1B, 0x1B00(z)
+    lqd       z1C, 0x1C00(z)
+    lqd       z1D, 0x1D00(z)
+    lqd       z1E, 0x1E00(z)
+    lqd       z1F, 0x1F00(z)
+  
+  
+    // 16x1 butterflies of size 1 (32 even + 0 odd)
+    // --------------------------
+  
+    // z00,z01
+    // z02,z03
+    // z04,z05
+    // z06,z07
+    // z08,z09
+    // z0A,z0B
+    // z0C,z0D
+    // z0E,z0F
+    // z10,z11
+    // z12,z13
+    // z14,z15
+    // z16,z17
+    // z18,z19
+    // z1A,z1B
+    // z1C,z1D
+    // z1E,z1F
+  
+    fa        Z00, z00, z01
+    fs        Z01, z00, z01
+  
+    fa        Z02, z02, z03
+    fs        Z03, z02, z03
+  
+    fa        Z04, z04, z05
+    fs        Z05, z04, z05
+  
+    fa        Z06, z06, z07
+    fs        Z07, z06, z07
+  
+    fa        Z08, z08, z09
+    fs        Z09, z08, z09
+  
+    fa        Z0A, z0A, z0B
+    fs        Z0B, z0A, z0B
+  
+    fa        Z0C, z0C, z0D
+    fs        Z0D, z0C, z0D
+  
+    fa        Z0E, z0E, z0F
+    fs        Z0F, z0E, z0F
+  
+    fa        Z10, z10, z11
+    fs        Z11, z10, z11
+  
+    fa        Z12, z12, z13
+    fs        Z13, z12, z13
+  
+    fa        Z14, z14, z15
+    fs        Z15, z14, z15
+  
+    fa        Z16, z16, z17
+    fs        Z17, z16, z17
+  
+    fa        Z18, z18, z19
+    fs        Z19, z18, z19
+  
+    fa        Z1A, z1A, z1B
+    fs        Z1B, z1A, z1B
+  
+    fa        Z1C, z1C, z1D
+    fs        Z1D, z1C, z1D
+  
+    fa        Z1E, z1E, z1F
+    fs        Z1F, z1E, z1F
+  
+    
+  
+    // 8x2 butterflies of size 2 (32 even + 8 odd)
+    // -------------------------
+  
+    // z00,z02  z01,z03
+    // z04,z06  z05,z07
+    // z08,z0A  z09,z0B
+    // z0C,z0E  z0D,z0F
+    // z10,z12  z11,z13
+    // z14,z16  z15,z17
+    // z18,z1A  z19,z1B
+    // z1C,z1E  z1D,z1F
+  
+    fa        z00, Z00, Z02
+    fs        z02, Z00, Z02
+  
+    shufb     T,   Z03, Z03, shuf_BaDc
+    fnms      z03, s8,  T,   Z01
+    fma       z01, s8,  T,   Z01
+  
+    fa        z04, Z04, Z06
+    fs        z06, Z04, Z06
+    
+    shufb     T,   Z07, Z07, shuf_BaDc
+    fnms      z07, s8,  T,   Z05
+    fma       z05, s8,  T,   Z05
+    
+    fa        z08, Z08, Z0A
+    fs        z0A, Z08, Z0A
+    
+    shufb     T,   Z0B, Z0B, shuf_BaDc
+    fnms      z0B, s8,  T,   Z09
+    fma       z09, s8,  T,   Z09
+    
+    fa        z0C, Z0C, Z0E
+    fs        z0E, Z0C, Z0E
+    
+    shufb     T,   Z0F, Z0F, shuf_BaDc
+    fnms      z0F, s8,  T,   Z0D
+    fma       z0D, s8,  T,   Z0D
+    
+    fa        z10, Z10, Z12
+    fs        z12, Z10, Z12
+    
+    shufb     T,   Z13, Z13, shuf_BaDc
+    fnms      z13, s8,  T,   Z11
+    fma       z11, s8,  T,   Z11
+    
+    fa        z14, Z14, Z16
+    fs        z16, Z14, Z16
+    
+    shufb     T,   Z17, Z17, shuf_BaDc
+    fnms      z17, s8,  T,   Z15
+    fma       z15, s8,  T,   Z15
+    
+    fa        z18, Z18, Z1A
+    fs        z1A, Z18, Z1A
+    
+    shufb     T,   Z1B, Z1B, shuf_BaDc
+    fnms      z1B, s8,  T,   Z19
+    fma       z19, s8,  T,   Z19
+    
+    fa        z1C, Z1C, Z1E
+    fs        z1E, Z1C, Z1E
+    
+    shufb     T,   Z1F, Z1F, shuf_BaDc
+    fnms      z1F, s8,  T,   Z1D
+    fma       z1D, s8,  T,   Z1D
+
+
+
+    // 4x4 butterflies of size 4 (40 even + 12 odd)
+    // -------------------------
+
+    // z00,z04  z01,z05  z02,z06  z03,z07
+    // z08,z0C  z09,z0D  z0A,z0E  z0B,z0F
+    // z10,z14  z11,z15  z12,z16  z13,z17
+    // z18,z1C  z19,z1D  z1A,z1E  z1B,z1F
+
+    fa        Z00, z00, z04
+    fs        Z04, z00, z04
+
+    shufb     T,   z05, z05, shuf_BaDc
+    fma       U,   t4,  T,   z05
+    fnms      Z05, c4,  U,   z01
+    fma       Z01, c4,  U,   z01
+    
+    shufb     T,   z06, z06, shuf_BaDc
+    fnms      Z06, s8,  T,   z02
+    fma       Z02, s8,  T,   z02
+  
+    shufb     T,   z07, z07, shuf_BaDc
+    fnms      U,   t4,  T,   z07
+    fma       Z07, c4,  U,   z03
+    fnms      Z03, c4,  U,   z03
+    
+    fa        Z08, z08, z0C
+    fs        Z0C, z08, z0C
+    
+    shufb     T,   z0D, z0D, shuf_BaDc
+    fma       U,   t4,  T,   z0D
+    fnms      Z0D, c4,  U,   z09
+    fma       Z09, c4,  U,   z09
+    
+    shufb     T,   z0E, z0E, shuf_BaDc
+    fnms      Z0E, s8,  T,   z0A
+    fma       Z0A, s8,  T,   z0A
+    
+    shufb     T,   z0F, z0F, shuf_BaDc
+    fnms      U,   t4,  T,   z0F
+    fma       Z0F, c4,  U,   z0B
+    fnms      Z0B, c4,  U,   z0B
+    
+    fa        Z10, z10, z14
+    fs        Z14, z10, z14
+    
+    shufb     T,   z15, z15, shuf_BaDc
+    fma       U,   t4,  T,   z15
+    fnms      Z15, c4,  U,   z11
+    fma       Z11, c4,  U,   z11
+    
+    shufb     T,   z16, z16, shuf_BaDc
+    fnms      Z16, s8,  T,   z12
+    fma       Z12, s8,  T,   z12
+    
+    shufb     T,   z17, z17, shuf_BaDc
+    fnms      U,   t4,  T,   z17
+    fma       Z17, c4,  U,   z13
+    fnms      Z13, c4,  U,   z13
+    
+    fa        Z18, z18, z1C
+    fs        Z1C, z18, z1C
+    
+    shufb     T,   z1D, z1D, shuf_BaDc
+    fma       U,   t4,  T,   z1D
+    fnms      Z1D, c4,  U,   z19
+    fma       Z19, c4,  U,   z19
+    
+    shufb     T,   z1E, z1E, shuf_BaDc
+    fnms      Z1E, s8,  T,   z1A
+    fma       Z1A, s8,  T,   z1A
+    
+    shufb     T,   z1F, z1F, shuf_BaDc
+    fnms      U,   t4,  T,   z1F
+    fma       Z1F, c4,  U,   z1B
+    fnms      Z1B, c4,  U,   z1B
+    
+
+  
+    // 2x8 butterflies of size 8 (44 even + 14 odd)
+    // -------------------------
+  
+    // z00,z08  z01,z09  z02,z0A  z03,z0B  z04,z0C  z05,z0D  z06,z0E  z07,z0F
+    // z10,z18  z11,z19  z12,z1A  z13,z1B  z14,z1C  z15,z1D  z16,z1E  z17,z1F
+  
+    fa        z00, Z00, Z08
+    fs        z08, Z00, Z08
+  
+    shufb     T,   Z09, Z09, shuf_BaDc
+    fma       U,   t2,  T,   Z09
+    fnms      z09, c2,  U,   Z01
+    fma       z01, c2,  U,   Z01
+    
+    shufb     T,   Z0A, Z0A, shuf_BaDc
+    fma       U,   t4,  T,   Z0A
+    fnms      z0A, c4,  U,   Z02
+    fma       z02, c4,  U,   Z02
+    
+    shufb     T,   Z0B, Z0B, shuf_BaDc
+    fma       U,   t6,  T,   Z0B
+    fnms      z0B, c6,  U,   Z03
+    fma       z03, c6,  U,   Z03
+    
+    shufb     T,   Z0C, Z0C, shuf_BaDc
+    fnms      z0C, s8,  T,   Z04
+    fma       z04, s8,  T,   Z04
+    
+    shufb     T,   Z0D, Z0D, shuf_BaDc
+    fnms      U,   t6,  T,   Z0D
+    fma       z0D, c6,  U,   Z05
+    fnms      z05, c6,  U,   Z05
+    
+    shufb     T,   Z0E, Z0E, shuf_BaDc
+    fnms      U,   t4,  T,   Z0E
+    fma       z0E, c4,  U,   Z06
+    fnms      z06, c4,  U,   Z06
+    
+    shufb     T,   Z0F, Z0F, shuf_BaDc
+    fnms      U,   t2,  T,   Z0F
+    fma       z0F, c2,  U,   Z07
+    fnms      z07, c2,  U,   Z07
+    
+    fa        z10, Z10, Z18
+    fs        z18, Z10, Z18
+    
+    shufb     T,   Z19, Z19, shuf_BaDc
+    fma       U,   t2,  T,   Z19
+    fnms      z19, c2,  U,   Z11
+    fma       z11, c2,  U,   Z11
+    
+    shufb     T,   Z1A, Z1A, shuf_BaDc
+    fma       U,   t4,  T,   Z1A
+    fnms      z1A, c4,  U,   Z12
+    fma       z12, c4,  U,   Z12
+    
+    shufb     T,   Z1B, Z1B, shuf_BaDc
+    fma       U,   t6,  T,   Z1B
+    fnms      z1B, c6,  U,   Z13
+    fma       z13, c6,  U,   Z13
+    
+    shufb     T,   Z1C, Z1C, shuf_BaDc
+    fnms      z1C, s8,  T,   Z14
+    fma       z14, s8,  T,   Z14
+    
+    shufb     T,   Z1D, Z1D, shuf_BaDc
+    fnms      U,   t6,  T,   Z1D
+    fma       z1D, c6,  U,   Z15
+    fnms      z15, c6,  U,   Z15
+    
+    shufb     T,   Z1E, Z1E, shuf_BaDc
+    fnms      U,   t4,  T,   Z1E
+    fma       z1E, c4,  U,   Z16
+    fnms      z16, c4,  U,   Z16
+    
+    shufb     T,   Z1F, Z1F, shuf_BaDc
+    fnms      U,   t2,  T,   Z1F
+    fma       z1F, c2,  U,   Z17
+    fnms      z17, c2,  U,   Z17
+    
+  
+  
+    // 1x16 butterflies of size 16 (46 even + 15 odd)
+    // ---------------------------
+  
+    // z00,z10  z01,z11  z02,z12  z03,z13  z04,z14  z05,z15  z06,z16  z07,z17  z08,z18  z09,z19  z0A,z1A  z0B,z1B  z0C,z1C  z0D,z1D  z0E,z1E  z0F,z1F
+  
+    fa        Z00, z00, z10
+    fs        Z10, z00, z10
+    
+    shufb     T,   z11, z11, shuf_BaDc
+    fma       U,   t1,  T,   z11
+    fnms      Z11, c1,  U,   z01
+    fma       Z01, c1,  U,   z01
+    
+    shufb     T,   z12, z12, shuf_BaDc
+    fma       U,   t2,  T,   z12
+    fnms      Z12, c2,  U,   z02
+    fma       Z02, c2,  U,   z02
+    
+    shufb     T,   z13, z13, shuf_BaDc
+    fma       U,   t3,  T,   z13
+    fnms      Z13, c3,  U,   z03
+    fma       Z03, c3,  U,   z03
+    
+    shufb     T,   z14, z14, shuf_BaDc
+    fma       U,   t4,  T,   z14
+    fnms      Z14, c4,  U,   z04
+    fma       Z04, c4,  U,   z04
+    
+    shufb     T,   z15, z15, shuf_BaDc
+    fma       U,   t5,  T,   z15
+    fnms      Z15, c5,  U,   z05
+    fma       Z05, c5,  U,   z05
+    
+    shufb     T,   z16, z16, shuf_BaDc
+    fma       U,   t6,  T,   z16
+    fnms      Z16, c6,  U,   z06
+    fma       Z06, c6,  U,   z06
+    
+    shufb     T,   z17, z17, shuf_BaDc
+    fma       U,   t7,  T,   z17
+    fnms      Z17, c7,  U,   z07
+    fma       Z07, c7,  U,   z07
+    
+    shufb     T,   z18, z18, shuf_BaDc
+    fnms      Z18, s8,  T,   z08
+    fma       Z08, s8,  T,   z08
+    
+    shufb     T,   z19, z19, shuf_BaDc
+    fnms      U,   t7,  T,   z19
+    fma       Z19, c7,  U,   z09
+    fnms      Z09, c7,  U,   z09
+    
+    shufb     T,   z1A, z1A, shuf_BaDc
+    fnms      U,   t6,  T,   z1A
+    fma       Z1A, c6,  U,   z0A
+    fnms      Z0A, c6,  U,   z0A
+    
+    shufb     T,   z1B, z1B, shuf_BaDc
+    fnms      U,   t5,  T,   z1B
+    fma       Z1B, c5,  U,   z0B
+    fnms      Z0B, c5,  U,   z0B
+    
+    shufb     T,   z1C, z1C, shuf_BaDc
+    fnms      U,   t4,  T,   z1C
+    fma       Z1C, c4,  U,   z0C
+    fnms      Z0C, c4,  U,   z0C
+    
+    shufb     T,   z1D, z1D, shuf_BaDc
+    fnms      U,   t3,  T,   z1D
+    fma       Z1D, c3,  U,   z0D
+    fnms      Z0D, c3,  U,   z0D
+    
+    shufb     T,   z1E, z1E, shuf_BaDc
+    fnms      U,   t2,  T,   z1E
+    fma       Z1E, c2,  U,   z0E
+    fnms      Z0E, c2,  U,   z0E
+    
+    shufb     T,   z1F, z1F, shuf_BaDc
+    fnms      U,   t1,  T,   z1F
+    fma       Z1F, c1,  U,   z0F
+    fnms      Z0F, c1,  U,   z0F
+    
+    
+    ai        z, z, 16
+
+  
+    // store 64 complex values (2 columns of 32)
+    stqd      Z00,-0x0010(z)
+    stqd      Z01, 0x00F0(z)
+    stqd      Z02, 0x01F0(z)
+    stqd      Z03, 0x02F0(z)
+    stqd      Z04, 0x03F0(z)
+    stqd      Z05, 0x04F0(z)
+    stqd      Z06, 0x05F0(z)
+    stqd      Z07, 0x06F0(z)
+    stqd      Z08, 0x07F0(z)
+    stqd      Z09, 0x08F0(z)
+    stqd      Z0A, 0x09F0(z)
+    stqd      Z0B, 0x0AF0(z)
+    stqd      Z0C, 0x0BF0(z)
+    stqd      Z0D, 0x0CF0(z)
+    stqd      Z0E, 0x0DF0(z)
+    stqd      Z0F, 0x0EF0(z)
+    stqd      Z10, 0x0FF0(z)
+    stqd      Z11, 0x10F0(z)
+    stqd      Z12, 0x11F0(z)
+    stqd      Z13, 0x12F0(z)
+    stqd      Z14, 0x13F0(z)
+    stqd      Z15, 0x14F0(z)
+    stqd      Z16, 0x15F0(z)
+    stqd      Z17, 0x16F0(z)
+    stqd      Z18, 0x17F0(z)
+    stqd      Z19, 0x18F0(z)
+    stqd      Z1A, 0x19F0(z)
+    stqd      Z1B, 0x1AF0(z)
+    stqd      Z1C, 0x1BF0(z)
+    stqd      Z1D, 0x1CF0(z)
+    stqd      Z1E, 0x1DF0(z)
+    stqd      Z1F, 0x1EF0(z)
+  
+  
+  
+    ai        cnt, cnt, -2
+
+    brnz      cnt, loop
+
+
+.endfunc
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_FFT32_DIF_cols_sep_asm(f32 x[], f32 y[], u32 cnt)
+// 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_FFT32_DIF_cols_sep_asm(f32 *x, f32 *y, u32 cnt)
+
+    .reg      x00, x01, x02, x03, x04, x05, x06, x07, x08, x09, x0A, x0B, x0C, x0D, x0E, x0F
+    .reg      x10, x11, x12, x13, x14, x15, x16, x17, x18, x19, x1A, x1B, x1C, x1D, x1E, x1F
+    .reg      y00, y01, y02, y03, y04, y05, y06, y07, y08, y09, y0A, y0B, y0C, y0D, y0E, y0F
+    .reg      y10, y11, y12, y13, y14, y15, y16, y17, y18, y19, y1A, y1B, y1C, y1D, y1E, y1F
+    .reg      X00, X01, X02, X03, X04, X05, X06, X07, X08, X09, X0A, X0B, X0C, X0D, X0E, X0F
+    .reg      X10, X11, X12, X13, X14, X15, X16, X17, X18, X19, X1A, X1B, X1C, X1D, X1E, X1F
+    .reg      Y00, Y01, Y02, Y03, Y04, Y05, Y06, Y07, Y08, Y09, Y0A, Y0B, Y0C, Y0D, Y0E, Y0F
+    .reg      Y10, Y11, Y12, Y13, Y14, Y15, Y16, Y17, Y18, Y19, Y1A, Y1B, Y1C, Y1D, Y1E, Y1F
+    .reg      c1, c2, c4, t1, t2, t3, Fx, Fy, c12, c14, c24, c124, C31
+    
+
+    // trig constants    
+    il128     c1,  0x3F7B14BE_3F7B14BE_3F7B14BE_3F7B14BE
+    il128     c2,  0x3F6C835E_3F6C835E_3F6C835E_3F6C835E
+    il128     c4,  0x3F3504F3_3F3504F3_3F3504F3_3F3504F3
+
+    il128     t1,  0x3E4BAFAF_3E4BAFAF_3E4BAFAF_3E4BAFAF
+    il128     t2,  0x3ED413CD_3ED413CD_3ED413CD_3ED413CD
+    il128     t3,  0x3F2B0DC1_3F2B0DC1_3F2B0DC1_3F2B0DC1
+
+    il128     c12, 0x3F67F7F8_3F67F7F8_3F67F7F8_3F67F7F8      // c12  = c1 * c2
+    il128     c14, 0x3F318A86_3F318A86_3F318A86_3F318A86      // c14  = c1 * c4
+    il128     c24, 0x3F273D75_3F273D75_3F273D75_3F273D75      // c24  = c2 * c4
+    il128     c124,0x3F2406CF_3F2406CF_3F2406CF_3F2406CF      // c124 = c1 * c2 * c4
+    il128     C31, 0x3F5906BD_3F5906BD_3F5906BD_3F5906BD      // C31  = c3 / c1
+
+    //il128     c3,  0x3F54DB31_3F54DB31_3F54DB31_3F54DB31
+    //il128     c23, 0x3F44A74C_3F44A74C_3F44A74C_3F44A74C      // c23  = c2 * c3
+
+
+loop:
+
+    // load 128 real values
+    lqd       x00, 0x000(x)
+    lqd       x01, 0x080(x)
+    lqd       x02, 0x100(x)
+    lqd       x03, 0x180(x)
+    lqd       x04, 0x200(x)
+    lqd       x05, 0x280(x)
+    lqd       x06, 0x300(x)
+    lqd       x07, 0x380(x)
+    lqd       x08, 0x400(x)
+    lqd       x09, 0x480(x)
+    lqd       x0A, 0x500(x)
+    lqd       x0B, 0x580(x)
+    lqd       x0C, 0x600(x)
+    lqd       x0D, 0x680(x)
+    lqd       x0E, 0x700(x)
+    lqd       x0F, 0x780(x)
+    lqd       x10, 0x800(x)
+    lqd       x11, 0x880(x)
+    lqd       x12, 0x900(x)
+    lqd       x13, 0x980(x)
+    lqd       x14, 0xA00(x)
+    lqd       x15, 0xA80(x)
+    lqd       x16, 0xB00(x)
+    lqd       x17, 0xB80(x)
+    lqd       x18, 0xC00(x)
+    lqd       x19, 0xC80(x)
+    lqd       x1A, 0xD00(x)
+    lqd       x1B, 0xD80(x)
+    lqd       x1C, 0xE00(x)
+    lqd       x1D, 0xE80(x)
+    lqd       x1E, 0xF00(x)
+    lqd       x1F, 0xF80(x)
+
+    // load 128 imaginary values
+    lqd       y00, 0x000(y)
+    lqd       y01, 0x080(y)
+    lqd       y02, 0x100(y)
+    lqd       y03, 0x180(y)
+    lqd       y04, 0x200(y)
+    lqd       y05, 0x280(y)
+    lqd       y06, 0x300(y)
+    lqd       y07, 0x380(y)
+    lqd       y08, 0x400(y)
+    lqd       y09, 0x480(y)
+    lqd       y0A, 0x500(y)
+    lqd       y0B, 0x580(y)
+    lqd       y0C, 0x600(y)
+    lqd       y0D, 0x680(y)
+    lqd       y0E, 0x700(y)
+    lqd       y0F, 0x780(y)
+    lqd       y10, 0x800(y)
+    lqd       y11, 0x880(y)
+    lqd       y12, 0x900(y)
+    lqd       y13, 0x980(y)
+    lqd       y14, 0xA00(y)
+    lqd       y15, 0xA80(y)
+    lqd       y16, 0xB00(y)
+    lqd       y17, 0xB80(y)
+    lqd       y18, 0xC00(y)
+    lqd       y19, 0xC80(y)
+    lqd       y1A, 0xD00(y)
+    lqd       y1B, 0xD80(y)
+    lqd       y1C, 0xE00(y)
+    lqd       y1D, 0xE80(y)
+    lqd       y1E, 0xF00(y)
+    lqd       y1F, 0xF80(y)
+    
+    
+    // DIF butterfly
+    // -------------
+    //
+    //
+    // z0' = z0 + z1
+    // z1' = w * (z0-z1)
+    //
+    //
+    //
+    // Fx  = x0 - x1
+    // Fy  = y0 - y1
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = c*Fx + s*Fy      where theta ranges over positive angles, i.e. s[i]=sin(+i*11.25)
+    // y1' = c*Fy - s*Fx
+    //
+    //
+    //
+    // For 0 degrees use
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = x0 - x1
+    // y1' = y0 - y1
+    //
+    //
+    //
+    // For 0-45 degrees use
+    //
+    // Fx  = x0 - x1
+    // Fy  = y0 - y1
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = Fx + t*Fy                // *c
+    // y1' = Fy - t*Fx                // *c
+    //
+    //
+    //
+    // For 45 degrees use
+    //
+    // Fx  = x0 - x1
+    // Fy  = y0 - y1
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = Fx + Fy                  // *c4
+    // y1' = Fy - Fx                  // *c4
+    //
+    //
+    //
+    // For 45-90 degrees use
+    //
+    // Fx  = x0 - x1
+    // Fy  = y0 - y1
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = t'*Fx + Fy               // *c'    where t'=tan(90-theta), c'=cos(90-theta)
+    // y1' = t'*Fy - Fx               // *c'
+    //
+    //
+    //
+    // For 90 degrees use
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = y0 - y1
+    // y1' = x1 - x0
+    //
+    //
+    //
+    // For 90-135 degrees use
+    //
+    // Fx  = x1 - x0
+    // Fy  = y1 - y0
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = t'*Fx - Fy               // *c'    where t'=tan(theta-90), c'=cos(theta-90)
+    // y1' = t'*Fy + Fx               // *c'
+    //
+    //
+    //
+    // For 135 degrees use
+    //
+    // Fx  = x1 - x0
+    // Fy  = y1 - y0
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = Fx - Fy                  // *c4
+    // y1' = Fy + Fx                  // *c4
+    //
+    //
+    //
+    // For 135-180 degrees use
+    //
+    // Fx  = x1 - x0
+    // Fy  = y1 - y0
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = Fx - t*Fy                // *c'    where t'=tan(180-theta), c'=cos(180-theta)
+    // y1' = Fy + t*Fx
+    
+
+
+    // 1x16 butterflies of size 16
+    // ---------------------------
+
+    // z00,z10  z01,z11  z02,z12  z03,z13  z04,z14  z05,z15  z06,z16  z07,z17  z08,z18  z09,z19  z0A,z1A  z0B,z1B  z0C,z1C  z0D,z1D  z0E,z1E  z0F,z1F   
+
+    // 0
+    fa        X00, x00, x10
+    fa        Y00, y00, y10
+    fs        X10, x00, x10
+    fs        Y10, y00, y10
+    
+    fs        Fx,  x01, x11
+    fs        Fy,  y01, y11
+    fa        X01, x01, x11
+    fa        Y01, y01, y11
+    fma       X11, t1,  Fy,  Fx       // *c1
+    fnms      Y11, t1,  Fx,  Fy       // *c1
+
+    fs        Fx,  x02, x12
+    fs        Fy,  y02, y12
+    fa        X02, x02, x12
+    fa        Y02, y02, y12
+    fma       X12, t2,  Fy,  Fx       // *c2
+    fnms      Y12, t2,  Fx,  Fy       // *c2
+
+    fs        Fx,  x03, x13
+    fs        Fy,  y03, y13
+    fa        X03, x03, x13
+    fa        Y03, y03, y13
+    fma       X13, t3,  Fy,  Fx       // *c3
+    fnms      Y13, t3,  Fx,  Fy       // *c3
+
+    // 45
+    fs        Fx,  x04, x14
+    fs        Fy,  y04, y14
+    fa        X04, x04, x14
+    fa        Y04, y04, y14
+    fa        X14, Fx,  Fy            // *c4
+    fs        Y14, Fy,  Fx            // *c4
+    
+    fs        Fx,  x05, x15
+    fs        Fy,  y05, y15
+    fa        X05, x05, x15
+    fa        Y05, y05, y15
+    fma       X15, t3,  Fx,  Fy       // *c3
+    fms       Y15, t3,  Fy,  Fx       // *c3
+    
+    fs        Fx,  x06, x16
+    fs        Fy,  y06, y16
+    fa        X06, x06, x16
+    fa        Y06, y06, y16
+    fma       X16, t2,  Fx,  Fy       // *c2
+    fms       Y16, t2,  Fy,  Fx       // *c2
+    
+    fs        Fx,  x07, x17
+    fs        Fy,  y07, y17
+    fa        X07, x07, x17
+    fa        Y07, y07, y17
+    fma       X17, t1,  Fx,  Fy       // *c1
+    fms       Y17, t1,  Fy,  Fx       // *c1
+    
+    // 90
+    fa        X08, x08, x18
+    fa        Y08, y08, y18
+    fs        X18, y08, y18
+    fs        Y18, x18, x08
+
+    fs        Fx,  x19, x09
+    fs        Fy,  y19, y09
+    fa        X09, x09, x19
+    fa        Y09, y09, y19
+    fms       X19, t1,  Fx,  Fy       // *c1
+    fma       Y19, t1,  Fy,  Fx       // *c1
+
+    fs        Fx,  x1A, x0A
+    fs        Fy,  y1A, y0A
+    fa        X0A, x0A, x1A
+    fa        Y0A, y0A, y1A
+    fms       X1A, t2,  Fx,  Fy       // *c2
+    fma       Y1A, t2,  Fy,  Fx       // *c2
+
+    fs        Fx,  x1B, x0B
+    fs        Fy,  y1B, y0B
+    fa        X0B, x0B, x1B
+    fa        Y0B, y0B, y1B
+    fms       X1B, t3,  Fx,  Fy       // *c3
+    fma       Y1B, t3,  Fy,  Fx       // *c3
+
+    // 135
+    fs        Fx,  x1C, x0C
+    fs        Fy,  y1C, y0C
+    fa        X0C, x0C, x1C
+    fa        Y0C, y0C, y1C
+    fs        X1C, Fx,  Fy            // *c4
+    fa        Y1C, Fy,  Fx            // *c4
+
+    fs        Fx,  x1D, x0D
+    fs        Fy,  y1D, y0D
+    fa        X0D, x0D, x1D
+    fa        Y0D, y0D, y1D
+    fnms      X1D, t3,  Fy,  Fx       // *c3
+    fma       Y1D, t3,  Fx,  Fy       // *c3
+    
+    fs        Fx,  x1E, x0E
+    fs        Fy,  y1E, y0E
+    fa        X0E, x0E, x1E
+    fa        Y0E, y0E, y1E
+    fnms      X1E, t2,  Fy,  Fx       // *c2
+    fma       Y1E, t2,  Fx,  Fy       // *c2
+    
+    fs        Fx,  x1F, x0F
+    fs        Fy,  y1F, y0F
+    fa        X0F, x0F, x1F
+    fa        Y0F, y0F, y1F
+    fnms      X1F, t1,  Fy,  Fx       // *c1
+    fma       Y1F, t1,  Fx,  Fy       // *c1
+    
+
+
+    // 2x8 butterflies of size 8
+    // -------------------------
+
+    // z00,z08  z01,z09, z02,z0A  z03,z0B, z04,z0C  z05,z0D, z06,z0E  z07,z0F 
+    // z10,z18  z11,z19, z12,z1A  z13,z1B, z14,z1C  z15,z1D, z16,z1E  z17,z1F  
+    
+    // 0
+    fa        x00, X00, X08
+    fa        y00, Y00, Y08
+    fs        x08, X00, X08
+    fs        y08, Y00, Y08
+    
+    fs        Fx,  X01, X09
+    fs        Fy,  Y01, Y09
+    fa        x01, X01, X09
+    fa        y01, Y01, Y09
+    fma       x09, t2,  Fy,  Fx       // *c2
+    fnms      y09, t2,  Fx,  Fy       // *c2
+
+    // 45
+    fs        Fx,  X02, X0A
+    fs        Fy,  Y02, Y0A
+    fa        x02, X02, X0A
+    fa        y02, Y02, Y0A
+    fa        x0A, Fx,  Fy            // *c4
+    fs        y0A, Fy,  Fx            // *c4
+    
+    fs        Fx,  X03, X0B
+    fs        Fy,  Y03, Y0B
+    fa        x03, X03, X0B
+    fa        y03, Y03, Y0B
+    fma       x0B, t2,  Fx,  Fy       // *c2
+    fms       y0B, t2,  Fy,  Fx       // *c2
+    
+    // 90
+    fa        x04, X04, X0C
+    fa        y04, Y04, Y0C
+    fs        x0C, Y04, Y0C
+    fs        y0C, X0C, X04
+
+    fs        Fx,  X0D, X05
+    fs        Fy,  Y0D, Y05
+    fa        x05, X05, X0D
+    fa        y05, Y05, Y0D
+    fms       x0D, t2,  Fx,  Fy       // *c2
+    fma       y0D, t2,  Fy,  Fx       // *c2
+
+    // 135
+    fs        Fx,  X0E, X06
+    fs        Fy,  Y0E, Y06
+    fa        x06, X06, X0E
+    fa        y06, Y06, Y0E
+    fs        x0E, Fx,  Fy            // *c4
+    fa        y0E, Fy,  Fx            // *c4
+
+    fs        Fx,  X0F, X07
+    fs        Fy,  Y0F, Y07
+    fa        x07, X07, X0F
+    fa        y07, Y07, Y0F
+    fnms      x0F, t2,  Fy,  Fx       // *c2
+    fma       y0F, t2,  Fx,  Fy       // *c2
+    
+    // 0
+    fa        x10, X10, X18
+    fa        y10, Y10, Y18
+    fs        x18, X10, X18
+    fs        y18, Y10, Y18
+    
+    fs        Fx,  X11, X19           // *c1
+    fs        Fy,  Y11, Y19           // *c1
+    fa        x11, X11, X19           // *c1
+    fa        y11, Y11, Y19           // *c1
+    fma       x19, t2,  Fy,  Fx       // *c1*c2
+    fnms      y19, t2,  Fx,  Fy       // *c1*c2
+
+    // 45
+    fs        Fx,  X12, X1A           // *c2
+    fs        Fy,  Y12, Y1A           // *c2
+    fa        x12, X12, X1A           // *c2
+    fa        y12, Y12, Y1A           // *c2
+    fa        x1A, Fx,  Fy            // *c2*c4
+    fs        y1A, Fy,  Fx            // *c2*c4
+    
+    fs        Fx,  X13, X1B           // *c3
+    fs        Fy,  Y13, Y1B           // *c3
+    fa        x13, X13, X1B           // *c3
+    fa        y13, Y13, Y1B           // *c3
+    fma       x1B, t2,  Fx,  Fy       // *c2*c3
+    fms       y1B, t2,  Fy,  Fx       // *c2*c3
+    
+    // 90
+    fa        x14, X14, X1C           // *c4
+    fa        y14, Y14, Y1C           // *c4
+    fs        x1C, Y14, Y1C           // *c4
+    fs        y1C, X1C, X14           // *c4
+
+    fs        Fx,  X1D, X15           // *c3
+    fs        Fy,  Y1D, Y15           // *c3
+    fa        x15, X15, X1D           // *c3
+    fa        y15, Y15, Y1D           // *c3
+    fms       x1D, t2,  Fx,  Fy       // *c2*c3
+    fma       y1D, t2,  Fy,  Fx       // *c2*c3
+
+    // 135
+    fs        Fx,  X1E, X16           // *c2
+    fs        Fy,  Y1E, Y16           // *c2
+    fa        x16, X16, X1E           // *c2
+    fa        y16, Y16, Y1E           // *c2
+    fs        x1E, Fx,  Fy            // *c2*c4
+    fa        y1E, Fy,  Fx            // *c2*c4
+
+    fs        Fx,  X1F, X17           // *c1
+    fs        Fy,  Y1F, Y17           // *c1
+    fa        x17, X17, X1F           // *c1
+    fa        y17, Y17, Y1F           // *c1
+    fnms      x1F, t2,  Fy,  Fx       // *c1*c2
+    fma       y1F, t2,  Fx,  Fy       // *c1*c2
+    
+
+
+    // 4x4 butterflies of size 4
+    // -------------------------
+
+    // z00,z04  z01,z05  z02,z06  z03,z07 
+    // z08,z0C  z09,z0D  z0A,z0E  z0B,z0F 
+    // z10,z14  z11,z15  z12,z16  z13,z17 
+    // z18,z1C  z19,z1D  z1A,z1E  z1B,z1F 
+    
+    // 0
+    fa        X00, x00, x04
+    fa        Y00, y00, y04
+    fs        X04, x00, x04
+    fs        Y04, y00, y04
+    
+    // 45
+    fs        Fx,  x01, x05
+    fs        Fy,  y01, y05
+    fa        X01, x01, x05
+    fa        Y01, y01, y05
+    fa        X05, Fx,  Fy            // *c4
+    fs        Y05, Fy,  Fx            // *c4
+    
+    // 90
+    fa        X02, x02, x06
+    fa        Y02, y02, y06
+    fs        X06, y02, y06
+    fs        Y06, x06, x02
+
+    // 135
+    fs        Fx,  x07, x03
+    fs        Fy,  y07, y03
+    fa        X03, x03, x07
+    fa        Y03, y03, y07
+    fs        X07, Fx,  Fy            // *c4
+    fa        Y07, Fy,  Fx            // *c4
+
+    // 0
+    fa        X08, x08, x0C
+    fa        Y08, y08, y0C
+    fs        X0C, x08, x0C
+    fs        Y0C, y08, y0C
+    
+    // 45
+    fs        Fx,  x09, x0D           // *c2
+    fs        Fy,  y09, y0D           // *c2
+    fa        X09, x09, x0D           // *c2
+    fa        Y09, y09, y0D           // *c2
+    fa        X0D, Fx,  Fy            // *c2*c4
+    fs        Y0D, Fy,  Fx            // *c2*c4
+    
+    // 90
+    fa        X0A, x0A, x0E           // *c4
+    fa        Y0A, y0A, y0E           // *c4
+    fs        X0E, y0A, y0E           // *c4
+    fs        Y0E, x0E, x0A           // *c4
+
+    // 135
+    fs        Fx,  x0F, x0B           // *c2
+    fs        Fy,  y0F, y0B           // *c2
+    fa        X0B, x0B, x0F           // *c2
+    fa        Y0B, y0B, y0F           // *c2
+    fs        X0F, Fx,  Fy            // *c2*c4
+    fa        Y0F, Fy,  Fx            // *c2*c4
+
+    // 0
+    fma       X10, c4,  x14, x10
+    fma       Y10, c4,  y14, y10
+    fnms      X14, c4,  x14, x10
+    fnms      Y14, c4,  y14, y10
+    
+    // 45
+    fnms      Fx,  C31, x15, x11      // *c1
+    fnms      Fy,  C31, y15, y11      // *c1
+    fma       X11, C31, x15, x11      // *c1
+    fma       Y11, C31, y15, y11      // *c1
+    fa        X15, Fx,  Fy            // *c1*c4
+    fs        Y15, Fy,  Fx            // *c1*c4
+    
+    // 90
+    fa        X12, x12, x16           // *c2
+    fa        Y12, y12, y16           // *c2
+    fs        X16, y12, y16           // *c2
+    fs        Y16, x16, x12           // *c2
+
+    // 135
+    fnms      Fx,  C31, x13, x17      // *c1
+    fnms      Fy,  C31, y13, y17      // *c1
+    fma       X13, C31, x13, x17      // *c1
+    fma       Y13, C31, y13, y17      // *c1
+    fs        X17, Fx,  Fy            // *c1*c4
+    fa        Y17, Fy,  Fx            // *c1*c4
+    
+    // 0
+    fma       X18, c4,  x1C, x18
+    fma       Y18, c4,  y1C, y18
+    fnms      X1C, c4,  x1C, x18
+    fnms      Y1C, c4,  y1C, y18
+    
+    // 45
+    fnms      Fx,  C31, x1D, x19      // *c1*c2
+    fnms      Fy,  C31, y1D, y19      // *c1*c2
+    fma       X19, C31, x1D, x19      // *c1*c2
+    fma       Y19, C31, y1D, y19      // *c1*c2
+    fa        X1D, Fx,  Fy            // *c1*c2*c4
+    fs        Y1D, Fy,  Fx            // *c1*c2*c4
+    
+    // 90
+    fa        X1A, x1A, x1E           // *c2*c4
+    fa        Y1A, y1A, y1E           // *c2*c4
+    fs        X1E, y1A, y1E           // *c2*c4
+    fs        Y1E, x1E, x1A           // *c2*c4
+
+    // 135
+    fnms      Fx,  C31, x1B, x1F      // *c1*c2
+    fnms      Fy,  C31, y1B, y1F      // *c1*c2
+    fma       X1B, C31, x1B, x1F      // *c1*c2
+    fma       Y1B, C31, y1B, y1F      // *c1*c2
+    fs        X1F, Fx,  Fy            // *c1*c2*c4
+    fa        Y1F, Fy,  Fx            // *c1*c2*c4
+
+    
+    
+    // 8x2 butterflies of size 2
+    // -------------------------
+
+    // z00,z02  z01,z03
+    // z04,z06  z05,z07 
+    // z08,z0A  z09,z0B
+    // z0C,z0E  z0D,z0F 
+    // z10,z12  z11,z13
+    // z14,z16  z15,z17 
+    // z18,z1A  z19,z1B
+    // z1C,z1E  z1D,z1F 
+    
+    // 0
+    fa        x00, X00, X02
+    fa        y00, Y00, Y02
+    fs        x02, X00, X02
+    fs        y02, Y00, Y02
+    
+    // 90
+    fa        x01, X01, X03
+    fa        y01, Y01, Y03
+    fs        x03, Y01, Y03
+    fs        y03, X03, X01
+
+    // 0
+    fa        x04, X04, X06
+    fa        y04, Y04, Y06
+    fs        x06, X04, X06
+    fs        y06, Y04, Y06
+    
+    // 90
+    fa        x05, X05, X07           // *c4
+    fa        y05, Y05, Y07           // *c4
+    fs        x07, Y05, Y07           // *c4
+    fs        y07, X07, X05           // *c4
+
+    // 0
+    fma       x08, c4,  X0A, X08
+    fma       y08, c4,  Y0A, Y08
+    fnms      x0A, c4,  X0A, X08
+    fnms      y0A, c4,  Y0A, Y08
+    
+    // 90
+    fa        x09, X09, X0B           // *c2
+    fa        y09, Y09, Y0B           // *c2
+    fs        x0B, Y09, Y0B           // *c2
+    fs        y0B, X0B, X09           // *c2
+
+    // 0
+    fma       x0C, c4,  X0E, X0C
+    fma       y0C, c4,  Y0E, Y0C
+    fnms      x0E, c4,  X0E, X0C
+    fnms      y0E, c4,  Y0E, Y0C
+    
+    // 90
+    fa        x0D, X0D, X0F           // *c2*c4
+    fa        y0D, Y0D, Y0F           // *c2*c4
+    fs        x0F, Y0D, Y0F           // *c2*c4
+    fs        y0F, X0F, X0D           // *c2*c4
+
+    // 0
+    fma       x10, c2,  X12, X10
+    fma       y10, c2,  Y12, Y10
+    fnms      x12, c2,  X12, X10
+    fnms      y12, c2,  Y12, Y10
+    
+    // 90
+    fa        x11, X11, X13           // *c1
+    fa        y11, Y11, Y13           // *c1
+    fs        x13, Y11, Y13           // *c1
+    fs        y13, X13, X11           // *c1
+
+    // 0
+    fma       x14, c2,  X16, X14
+    fma       y14, c2,  Y16, Y14
+    fnms      x16, c2,  X16, X14
+    fnms      y16, c2,  Y16, Y14
+    
+    // 90
+    fa        x15, X15, X17           // *c1*c4
+    fa        y15, Y15, Y17           // *c1*c4
+    fs        x17, Y15, Y17           // *c1*c4
+    fs        y17, X17, X15           // *c1*c4
+
+    // 0
+    fma       x18, c24, X1A, X18
+    fma       y18, c24, Y1A, Y18
+    fnms      x1A, c24, X1A, X18
+    fnms      y1A, c24, Y1A, Y18
+    
+    // 90
+    fa        x19, X19, X1B           // *c1*c2
+    fa        y19, Y19, Y1B           // *c1*c2
+    fs        x1B, Y19, Y1B           // *c1*c2
+    fs        y1B, X1B, X19           // *c1*c2
+
+    // 0
+    fma       x1C, c24, X1E, X1C
+    fma       y1C, c24, Y1E, Y1C
+    fnms      x1E, c24, X1E, X1C
+    fnms      y1E, c24, Y1E, Y1C
+    
+    // 90
+    fa        x1D, X1D, X1F           // *c1*c2*c4
+    fa        y1D, Y1D, Y1F           // *c1*c2*c4
+    fs        x1F, Y1D, Y1F           // *c1*c2*c4
+    fs        y1F, X1F, X1D           // *c1*c2*c4
+
+    
+    
+    // 16x1 butterflies of size 1
+    // --------------------------
+
+    // z00,z01
+    // z02,z03
+    // z04,z05
+    // z06,z07
+    // z08,z09
+    // z0A,z0B
+    // z0C,z0D
+    // z0E,z0F
+    // z10,z11
+    // z12,z13
+    // z14,z15
+    // z16,z17
+    // z18,z19
+    // z1A,z1B
+    // z1C,z1D
+    // z1E,z1F
+
+    // 0
+    fa        X00, x00, x01
+    fa        Y00, y00, y01
+    fs        X01, x00, x01
+    fs        Y01, y00, y01
+    
+    // 0
+    fa        X02, x02, x03
+    fa        Y02, y02, y03
+    fs        X03, x02, x03
+    fs        Y03, y02, y03
+    
+    // 0
+    fma       X04, c4,  x05, x04
+    fma       Y04, c4,  y05, y04
+    fnms      X05, c4,  x05, x04
+    fnms      Y05, c4,  y05, y04
+    
+    // 0
+    fma       X06, c4,  x07, x06
+    fma       Y06, c4,  y07, y06
+    fnms      X07, c4,  x07, x06
+    fnms      Y07, c4,  y07, y06
+    
+    // 0
+    fma       X08, c2,  x09, x08
+    fma       Y08, c2,  y09, y08
+    fnms      X09, c2,  x09, x08
+    fnms      Y09, c2,  y09, y08
+    
+    // 0
+    fma       X0A, c2,  x0B, x0A
+    fma       Y0A, c2,  y0B, y0A
+    fnms      X0B, c2,  x0B, x0A
+    fnms      Y0B, c2,  y0B, y0A
+    
+    // 0
+    fma       X0C, c24, x0D, x0C
+    fma       Y0C, c24, y0D, y0C
+    fnms      X0D, c24, x0D, x0C
+    fnms      Y0D, c24, y0D, y0C
+    
+    // 0
+    fma       X0E, c24, x0F, x0E
+    fma       Y0E, c24, y0F, y0E
+    fnms      X0F, c24, x0F, x0E
+    fnms      Y0F, c24, y0F, y0E
+    
+    // 0
+    fma       X10, c1,  x11, x10
+    fma       Y10, c1,  y11, y10
+    fnms      X11, c1,  x11, x10
+    fnms      Y11, c1,  y11, y10
+    
+    // 0
+    fma       X12, c1,  x13, x12
+    fma       Y12, c1,  y13, y12
+    fnms      X13, c1,  x13, x12
+    fnms      Y13, c1,  y13, y12
+    
+    // 0
+    fma       X14, c14, x15, x14
+    fma       Y14, c14, y15, y14
+    fnms      X15, c14, x15, x14
+    fnms      Y15, c14, y15, y14
+    
+    // 0
+    fma       X16, c14, x17, x16
+    fma       Y16, c14, y17, y16
+    fnms      X17, c14, x17, x16
+    fnms      Y17, c14, y17, y16
+    
+    // 0
+    fma       X18, c12, x19, x18
+    fma       Y18, c12, y19, y18
+    fnms      X19, c12, x19, x18
+    fnms      Y19, c12, y19, y18
+    
+    // 0
+    fma       X1A, c12, x1B, x1A
+    fma       Y1A, c12, y1B, y1A
+    fnms      X1B, c12, x1B, x1A
+    fnms      Y1B, c12, y1B, y1A
+    
+    // 0
+    fma       X1C, c124,x1D, x1C
+    fma       Y1C, c124,y1D, y1C
+    fnms      X1D, c124,x1D, x1C
+    fnms      Y1D, c124,y1D, y1C
+    
+    // 0
+    fma       X1E, c124,x1F, x1E
+    fma       Y1E, c124,y1F, y1E
+    fnms      X1F, c124,x1F, x1E
+    fnms      Y1F, c124,y1F, y1E
+    
+    
+
+    ai        x, x, 16
+    ai        y, y, 16
+    
+    
+    // store 128 real values
+    stqd      X00,-0x010(x)
+    stqd      X01, 0x070(x)
+    stqd      X02, 0x0F0(x)
+    stqd      X03, 0x170(x)
+    stqd      X04, 0x1F0(x)
+    stqd      X05, 0x270(x)
+    stqd      X06, 0x2F0(x)
+    stqd      X07, 0x370(x)
+    stqd      X08, 0x3F0(x)
+    stqd      X09, 0x470(x)
+    stqd      X0A, 0x4F0(x)
+    stqd      X0B, 0x570(x)
+    stqd      X0C, 0x5F0(x)
+    stqd      X0D, 0x670(x)
+    stqd      X0E, 0x6F0(x)
+    stqd      X0F, 0x770(x)
+    stqd      X10, 0x7F0(x)
+    stqd      X11, 0x870(x)
+    stqd      X12, 0x8F0(x)
+    stqd      X13, 0x970(x)
+    stqd      X14, 0x9F0(x)
+    stqd      X15, 0xA70(x)
+    stqd      X16, 0xAF0(x)
+    stqd      X17, 0xB70(x)
+    stqd      X18, 0xBF0(x)
+    stqd      X19, 0xC70(x)
+    stqd      X1A, 0xCF0(x)
+    stqd      X1B, 0xD70(x)
+    stqd      X1C, 0xDF0(x)
+    stqd      X1D, 0xE70(x)
+    stqd      X1E, 0xEF0(x)
+    stqd      X1F, 0xF70(x)
+
+    // store 128 imaginary values
+    stqd      Y00,-0x010(y)
+    stqd      Y01, 0x070(y)
+    stqd      Y02, 0x0F0(y)
+    stqd      Y03, 0x170(y)
+    stqd      Y04, 0x1F0(y)
+    stqd      Y05, 0x270(y)
+    stqd      Y06, 0x2F0(y)
+    stqd      Y07, 0x370(y)
+    stqd      Y08, 0x3F0(y)
+    stqd      Y09, 0x470(y)
+    stqd      Y0A, 0x4F0(y)
+    stqd      Y0B, 0x570(y)
+    stqd      Y0C, 0x5F0(y)
+    stqd      Y0D, 0x670(y)
+    stqd      Y0E, 0x6F0(y)
+    stqd      Y0F, 0x770(y)
+    stqd      Y10, 0x7F0(y)
+    stqd      Y11, 0x870(y)
+    stqd      Y12, 0x8F0(y)
+    stqd      Y13, 0x970(y)
+    stqd      Y14, 0x9F0(y)
+    stqd      Y15, 0xA70(y)
+    stqd      Y16, 0xAF0(y)
+    stqd      Y17, 0xB70(y)
+    stqd      Y18, 0xBF0(y)
+    stqd      Y19, 0xC70(y)
+    stqd      Y1A, 0xCF0(y)
+    stqd      Y1B, 0xD70(y)
+    stqd      Y1C, 0xDF0(y)
+    stqd      Y1D, 0xE70(y)
+    stqd      Y1E, 0xEF0(y)
+    stqd      Y1F, 0xF70(y)
+    
+    
+    
+    ai        cnt, cnt, -4
+
+    brnz      cnt, loop
+
+    
+.endfunc
+
+
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_InvFFT32_DIT_cols_sep_asm(f32 x[], f32 y[], u32 cnt)
+// 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+.cfunc void R2O_InvFFT32_DIT_cols_sep_asm(f32 *x, f32 *y, u32 cnt)
+
+    .reg      x00, x01, x02, x03, x04, x05, x06, x07, x08, x09, x0A, x0B, x0C, x0D, x0E, x0F
+    .reg      x10, x11, x12, x13, x14, x15, x16, x17, x18, x19, x1A, x1B, x1C, x1D, x1E, x1F
+    .reg      y00, y01, y02, y03, y04, y05, y06, y07, y08, y09, y0A, y0B, y0C, y0D, y0E, y0F
+    .reg      y10, y11, y12, y13, y14, y15, y16, y17, y18, y19, y1A, y1B, y1C, y1D, y1E, y1F
+    .reg      X00, X01, X02, X03, X04, X05, X06, X07, X08, X09, X0A, X0B, X0C, X0D, X0E, X0F
+    .reg      X10, X11, X12, X13, X14, X15, X16, X17, X18, X19, X1A, X1B, X1C, X1D, X1E, X1F
+    .reg      Y00, Y01, Y02, Y03, Y04, Y05, Y06, Y07, Y08, Y09, Y0A, Y0B, Y0C, Y0D, Y0E, Y0F
+    .reg      Y10, Y11, Y12, Y13, Y14, Y15, Y16, Y17, Y18, Y19, Y1A, Y1B, Y1C, Y1D, Y1E, Y1F
+    .reg      c1, c2, c3, c4, t1, t2, t3, Tx, Ty
+    
+
+    // trig constants    
+    il128     c1, 0x3F7B14BE_3F7B14BE_3F7B14BE_3F7B14BE
+    il128     c2, 0x3F6C835E_3F6C835E_3F6C835E_3F6C835E
+    il128     c3, 0x3F54DB31_3F54DB31_3F54DB31_3F54DB31
+    il128     c4, 0x3F3504F3_3F3504F3_3F3504F3_3F3504F3
+
+    il128     t1, 0x3E4BAFAF_3E4BAFAF_3E4BAFAF_3E4BAFAF
+    il128     t2, 0x3ED413CD_3ED413CD_3ED413CD_3ED413CD
+    il128     t3, 0x3F2B0DC1_3F2B0DC1_3F2B0DC1_3F2B0DC1
+
+
+loop:
+
+    // load 128 real values
+    lqd       x00, 0x000(x)
+    lqd       x01, 0x080(x)
+    lqd       x02, 0x100(x)
+    lqd       x03, 0x180(x)
+    lqd       x04, 0x200(x)
+    lqd       x05, 0x280(x)
+    lqd       x06, 0x300(x)
+    lqd       x07, 0x380(x)
+    lqd       x08, 0x400(x)
+    lqd       x09, 0x480(x)
+    lqd       x0A, 0x500(x)
+    lqd       x0B, 0x580(x)
+    lqd       x0C, 0x600(x)
+    lqd       x0D, 0x680(x)
+    lqd       x0E, 0x700(x)
+    lqd       x0F, 0x780(x)
+    lqd       x10, 0x800(x)
+    lqd       x11, 0x880(x)
+    lqd       x12, 0x900(x)
+    lqd       x13, 0x980(x)
+    lqd       x14, 0xA00(x)
+    lqd       x15, 0xA80(x)
+    lqd       x16, 0xB00(x)
+    lqd       x17, 0xB80(x)
+    lqd       x18, 0xC00(x)
+    lqd       x19, 0xC80(x)
+    lqd       x1A, 0xD00(x)
+    lqd       x1B, 0xD80(x)
+    lqd       x1C, 0xE00(x)
+    lqd       x1D, 0xE80(x)
+    lqd       x1E, 0xF00(x)
+    lqd       x1F, 0xF80(x)
+
+    // load 128 imaginary values
+    lqd       y00, 0x000(y)
+    lqd       y01, 0x080(y)
+    lqd       y02, 0x100(y)
+    lqd       y03, 0x180(y)
+    lqd       y04, 0x200(y)
+    lqd       y05, 0x280(y)
+    lqd       y06, 0x300(y)
+    lqd       y07, 0x380(y)
+    lqd       y08, 0x400(y)
+    lqd       y09, 0x480(y)
+    lqd       y0A, 0x500(y)
+    lqd       y0B, 0x580(y)
+    lqd       y0C, 0x600(y)
+    lqd       y0D, 0x680(y)
+    lqd       y0E, 0x700(y)
+    lqd       y0F, 0x780(y)
+    lqd       y10, 0x800(y)
+    lqd       y11, 0x880(y)
+    lqd       y12, 0x900(y)
+    lqd       y13, 0x980(y)
+    lqd       y14, 0xA00(y)
+    lqd       y15, 0xA80(y)
+    lqd       y16, 0xB00(y)
+    lqd       y17, 0xB80(y)
+    lqd       y18, 0xC00(y)
+    lqd       y19, 0xC80(y)
+    lqd       y1A, 0xD00(y)
+    lqd       y1B, 0xD80(y)
+    lqd       y1C, 0xE00(y)
+    lqd       y1D, 0xE80(y)
+    lqd       y1E, 0xF00(y)
+    lqd       y1F, 0xF80(y)
+    
+    
+    // DIT butterfly
+    // -------------
+    //
+    //
+    // z0' = z0 + w*z1
+    // z1' = z0 - w*z1
+    //
+    //
+    //
+    // Tx  = c*x1 - s*y1
+    // Ty  = c*y1 + s*x1
+    //
+    // x0' = x0 + Tx
+    // y0' = y0 + Ty
+    //
+    // x1' = x0 - Tx
+    // y1' = y0 - Ty
+    //
+    //
+    //
+    // For 0 degrees use
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = x0 - x1
+    // y1' = y0 - y1
+    //
+    //
+    //
+    // For 0-45 degrees use
+    //
+    // Tx  = x1 - t*y1
+    // Ty  = y1 + t*x1
+    //
+    // x0' = x0 + c*Tx
+    // y0' = y0 + c*Ty
+    //
+    // x1' = x0 - c*Tx
+    // y1' = y0 - c*Ty
+    //
+    //
+    //
+    // For 45 degrees use
+    //
+    // Tx  = x1 - y1
+    // Ty  = y1 + x1
+    //
+    // x0' = x0 + c4*Tx
+    // y0' = y0 + c4*Ty
+    //
+    // x1' = x0 - c4*Tx
+    // y1' = y0 - c4*Ty
+    //
+    //
+    //
+    // For 45-90 degrees use
+    //
+    // Tx  = y1 - x1/t = y1 - t'*x1   where t'=tan(90-theta)
+    // Ty  = x1 + y1/t = x1 + t'*y1
+    //
+    // x0' = x0 - s*Tx = x0 - c'*Tx   where c'=cos(90-theta)
+    // y0' = y0 + s*Ty = y0 + c'*Ty
+    //
+    // x1' = x0 + s*Tx = x0 + c'*Tx 
+    // y1' = y0 - s*Ty = y0 - c'*Ty
+    //
+    //
+    //
+    // For 90 degrees use
+    //
+    // x0' = x0 - y1
+    // y0' = y0 + x1
+    //
+    // x1' = x0 + y1 
+    // y1' = y0 - x1
+    //
+    //
+    //
+    // For 90-135 degrees use
+    //
+    // Tx  = y1 - x1/t = y1 + t'*x1   where t'=tan(theta-90)
+    // Ty  = x1 + y1/t = x1 - t'*y1
+    //
+    // x0' = x0 - s*Tx = x0 - c'*Tx   where c'=cos(theta-90)
+    // y0' = y0 + s*Ty = y0 + c'*Ty
+    //
+    // x1' = x0 + s*Tx = x0 + c'*Tx 
+    // y1' = y0 - s*Ty = y0 - c'*Ty
+    //
+    //
+    //
+    // For 135 degrees use
+    //
+    // Tx  = y1 + x1
+    // Ty  = x1 - y1
+    //
+    // x0' = x0 - c4*Tx               where c'=cos(45)
+    // y0' = y0 + c4*Ty
+    //
+    // x1' = x0 + c4*Tx 
+    // y1' = y0 - c4*Ty
+    //
+    //
+    //
+    // For 135-180 degrees use
+    //
+    // Tx  = x1 - t*y1 = x1 + t'*y1   where t'=tan(180-theta)
+    // Ty  = y1 + t*x1 = y1 - t'*x1
+    //
+    // x0' = x0 + c*Tx = x0 - c'*Tx   where c'=cos(180-theta)
+    // y0' = y0 + c*Ty = y0 - c'*Ty
+    //
+    // x1' = x0 - c*Tx = x0 + c'*Tx
+    // y1' = y0 - c*Ty = y0 + c'*Ty
+
+
+    
+    // 16x1 butterflies of size 1
+    // --------------------------
+  
+    // z00,z01
+    // z02,z03
+    // z04,z05
+    // z06,z07
+    // z08,z09
+    // z0A,z0B
+    // z0C,z0D
+    // z0E,z0F
+    // z10,z11
+    // z12,z13
+    // z14,z15
+    // z16,z17
+    // z18,z19
+    // z1A,z1B
+    // z1C,z1D
+    // z1E,z1F
+  
+    // 0  
+    fa        X00, x00, x01
+    fa        Y00, y00, y01
+    fs        X01, x00, x01
+    fs        Y01, y00, y01
+
+    // 0  
+    fa        X02, x02, x03
+    fa        Y02, y02, y03
+    fs        X03, x02, x03
+    fs        Y03, y02, y03
+
+    // 0  
+    fa        X04, x04, x05
+    fa        Y04, y04, y05
+    fs        X05, x04, x05
+    fs        Y05, y04, y05
+
+    // 0  
+    fa        X06, x06, x07
+    fa        Y06, y06, y07
+    fs        X07, x06, x07
+    fs        Y07, y06, y07
+
+    // 0  
+    fa        X08, x08, x09
+    fa        Y08, y08, y09
+    fs        X09, x08, x09
+    fs        Y09, y08, y09
+
+    // 0  
+    fa        X0A, x0A, x0B
+    fa        Y0A, y0A, y0B
+    fs        X0B, x0A, x0B
+    fs        Y0B, y0A, y0B
+
+    // 0  
+    fa        X0C, x0C, x0D
+    fa        Y0C, y0C, y0D
+    fs        X0D, x0C, x0D
+    fs        Y0D, y0C, y0D
+
+    // 0  
+    fa        X0E, x0E, x0F
+    fa        Y0E, y0E, y0F
+    fs        X0F, x0E, x0F
+    fs        Y0F, y0E, y0F
+
+    // 0  
+    fa        X10, x10, x11
+    fa        Y10, y10, y11
+    fs        X11, x10, x11
+    fs        Y11, y10, y11
+                          
+    // 0  
+    fa        X12, x12, x13
+    fa        Y12, y12, y13
+    fs        X13, x12, x13
+    fs        Y13, y12, y13
+                          
+    // 0  
+    fa        X14, x14, x15
+    fa        Y14, y14, y15
+    fs        X15, x14, x15
+    fs        Y15, y14, y15
+                          
+    // 0  
+    fa        X16, x16, x17
+    fa        Y16, y16, y17
+    fs        X17, x16, x17
+    fs        Y17, y16, y17
+                          
+    // 0  
+    fa        X18, x18, x19
+    fa        Y18, y18, y19
+    fs        X19, x18, x19
+    fs        Y19, y18, y19
+                          
+    // 0  
+    fa        X1A, x1A, x1B
+    fa        Y1A, y1A, y1B
+    fs        X1B, x1A, x1B
+    fs        Y1B, y1A, y1B
+                          
+    // 0  
+    fa        X1C, x1C, x1D
+    fa        Y1C, y1C, y1D
+    fs        X1D, x1C, x1D
+    fs        Y1D, y1C, y1D
+                          
+    // 0  
+    fa        X1E, x1E, x1F
+    fa        Y1E, y1E, y1F
+    fs        X1F, x1E, x1F
+    fs        Y1F, y1E, y1F
+
+
+    
+    // 8x2 butterflies of size 2
+    // -------------------------
+    // z00,z02  z01,z03
+    // z04,z06  z05,z07
+    // z08,z0A  z09,z0B
+    // z0C,z0E  z0D,z0F
+    // z10,z12  z11,z13
+    // z14,z16  z15,z17
+    // z18,z1A  z19,z1B
+    // z1C,z1E  z1D,z1F
+
+    // 0  
+    fa        x00, X00, X02
+    fa        y00, Y00, Y02
+    fs        x02, X00, X02
+    fs        y02, Y00, Y02
+
+    // 90  
+    fs        x01, X01, Y03
+    fa        y01, Y01, X03
+    fa        x03, X01, Y03
+    fs        y03, Y01, X03
+  
+    // 0  
+    fa        x04, X04, X06
+    fa        y04, Y04, Y06
+    fs        x06, X04, X06
+    fs        y06, Y04, Y06
+  
+    // 90  
+    fs        x05, X05, Y07
+    fa        y05, Y05, X07
+    fa        x07, X05, Y07
+    fs        y07, Y05, X07
+  
+    // 0  
+    fa        x08, X08, X0A
+    fa        y08, Y08, Y0A
+    fs        x0A, X08, X0A
+    fs        y0A, Y08, Y0A
+  
+    // 90  
+    fs        x09, X09, Y0B
+    fa        y09, Y09, X0B
+    fa        x0B, X09, Y0B
+    fs        y0B, Y09, X0B
+  
+    // 0  
+    fa        x0C, X0C, X0E
+    fa        y0C, Y0C, Y0E
+    fs        x0E, X0C, X0E
+    fs        y0E, Y0C, Y0E
+  
+    // 90  
+    fs        x0D, X0D, Y0F
+    fa        y0D, Y0D, X0F
+    fa        x0F, X0D, Y0F
+    fs        y0F, Y0D, X0F
+  
+    // 0  
+    fa        x10, X10, X12
+    fa        y10, Y10, Y12
+    fs        x12, X10, X12
+    fs        y12, Y10, Y12
+                          
+    // 90  
+    fs        x11, X11, Y13
+    fa        y11, Y11, X13
+    fa        x13, X11, Y13
+    fs        y13, Y11, X13
+                          
+    // 0  
+    fa        x14, X14, X16
+    fa        y14, Y14, Y16
+    fs        x16, X14, X16
+    fs        y16, Y14, Y16
+                          
+    // 90  
+    fs        x15, X15, Y17
+    fa        y15, Y15, X17
+    fa        x17, X15, Y17
+    fs        y17, Y15, X17
+                          
+    // 0  
+    fa        x18, X18, X1A
+    fa        y18, Y18, Y1A
+    fs        x1A, X18, X1A
+    fs        y1A, Y18, Y1A
+                          
+    // 90  
+    fs        x19, X19, Y1B
+    fa        y19, Y19, X1B
+    fa        x1B, X19, Y1B
+    fs        y1B, Y19, X1B
+                          
+    // 0  
+    fa        x1C, X1C, X1E
+    fa        y1C, Y1C, Y1E
+    fs        x1E, X1C, X1E
+    fs        y1E, Y1C, Y1E
+                          
+    // 90  
+    fs        x1D, X1D, Y1F
+    fa        y1D, Y1D, X1F
+    fa        x1F, X1D, Y1F
+    fs        y1F, Y1D, X1F
+
+
+  
+    // 4x4 butterflies of size 4
+    // -------------------------
+
+    // z00,z04  z01,z05  z02,z06  z03,z07
+    // z08,z0C  z09,z0D  z0A,z0E  z0B,z0F
+    // z10,z14  z11,z15  z12,z16  z13,z17
+    // z18,z1C  z19,z1D  z1A,z1E  z1B,z1F
+
+    // 0
+    fa        X00, x00, x04
+    fa        Y00, y00, y04
+    fs        X04, x00, x04
+    fs        Y04, y00, y04
+    
+    // 45
+    fs        Tx,  x05, y05
+    fa        Ty,  y05, x05
+    fma       X01, c4,  Tx,  x01
+    fma       Y01, c4,  Ty,  y01 
+    fnms      X05, c4,  Tx,  x01
+    fnms      Y05, c4,  Ty,  y01 
+
+    // 90
+    fs        X02, x02, y06
+    fa        Y02, y02, x06
+    fa        X06, x02, y06
+    fs        Y06, y02, x06
+
+    // 135
+    fa        Tx,  y07, x07    
+    fs        Ty,  x07, y07
+    fnms      X03, c4,  Tx,  x03    
+    fma       Y03, c4,  Ty,  y03    
+    fma       X07, c4,  Tx,  x03    
+    fnms      Y07, c4,  Ty,  y03    
+
+    // 0    
+    fa        X08, x08, x0C
+    fa        Y08, y08, y0C
+    fs        X0C, x08, x0C
+    fs        Y0C, y08, y0C
+
+    // 45    
+    fs        Tx,  x0D, y0D
+    fa        Ty,  y0D, x0D
+    fma       X09, c4,  Tx,  x09
+    fma       Y09, c4,  Ty,  y09 
+    fnms      X0D, c4,  Tx,  x09
+    fnms      Y0D, c4,  Ty,  y09 
+
+    // 90
+    fs        X0A, x0A, y0E
+    fa        Y0A, y0A, x0E
+    fa        X0E, x0A, y0E
+    fs        Y0E, y0A, x0E
+
+    // 135
+    fa        Tx,  y0F, x0F    
+    fs        Ty,  x0F, y0F
+    fnms      X0B, c4,  Tx,  x0B    
+    fma       Y0B, c4,  Ty,  y0B    
+    fma       X0F, c4,  Tx,  x0B    
+    fnms      Y0F, c4,  Ty,  y0B    
+
+    // 0    
+    fa        X10, x10, x14
+    fa        Y10, y10, y14
+    fs        X14, x10, x14
+    fs        Y14, y10, y14
+
+    // 45    
+    fs        Tx,  x15, y15
+    fa        Ty,  y15, x15
+    fma       X11, c4,  Tx,  x11
+    fma       Y11, c4,  Ty,  y11 
+    fnms      X15, c4,  Tx,  x11
+    fnms      Y15, c4,  Ty,  y11 
+
+    // 90
+    fs        X12, x12, y16
+    fa        Y12, y12, x16
+    fa        X16, x12, y16
+    fs        Y16, y12, x16
+
+    // 135
+    fa        Tx,  y17, x17    
+    fs        Ty,  x17, y17
+    fnms      X13, c4,  Tx,  x13    
+    fma       Y13, c4,  Ty,  y13    
+    fma       X17, c4,  Tx,  x13    
+    fnms      Y17, c4,  Ty,  y13    
+
+    // 0    
+    fa        X18, x18, x1C
+    fa        Y18, y18, y1C
+    fs        X1C, x18, x1C
+    fs        Y1C, y18, y1C
+
+    // 45    
+    fs        Tx,  x1D, y1D
+    fa        Ty,  y1D, x1D
+    fma       X19, c4,  Tx,  x19
+    fma       Y19, c4,  Ty,  y19 
+    fnms      X1D, c4,  Tx,  x19
+    fnms      Y1D, c4,  Ty,  y19 
+
+    // 90
+    fs        X1A, x1A, y1E
+    fa        Y1A, y1A, x1E
+    fa        X1E, x1A, y1E
+    fs        Y1E, y1A, x1E
+
+    // 135
+    fa        Tx,  y1F, x1F    
+    fs        Ty,  x1F, y1F
+    fnms      X1B, c4,  Tx,  x1B    
+    fma       Y1B, c4,  Ty,  y1B    
+    fma       X1F, c4,  Tx,  x1B    
+    fnms      Y1F, c4,  Ty,  y1B    
+
+
+    
+    // 2x8 butterflies of size 8
+    // -------------------------
+  
+    // z00,z08  z01,z09  z02,z0A  z03,z0B  z04,z0C  z05,z0D  z06,z0E  z07,z0F
+    // z10,z18  z11,z19  z12,z1A  z13,z1B  z14,z1C  z15,z1D  z16,z1E  z17,z1F
+
+    // 0  
+    fa        x00, X00, X08
+    fa        y00, Y00, Y08
+    fs        x08, X00, X08
+    fs        y08, Y00, Y08
+    
+    fnms      Tx,  t2,  Y09, X09
+    fma       Ty,  t2,  X09, Y09
+    fma       x01, c2,  Tx,  X01  
+    fma       y01, c2,  Ty,  Y01  
+    fnms      x09, c2,  Tx,  X01  
+    fnms      y09, c2,  Ty,  Y01  
+
+    // 45
+    fs        Tx,  X0A, Y0A
+    fa        Ty,  Y0A, X0A  
+    fma       x02, c4,  Tx,  X02  
+    fma       y02, c4,  Ty,  Y02  
+    fnms      x0A, c4,  Tx,  X02  
+    fnms      y0A, c4,  Ty,  Y02  
+
+    fnms      Tx,  t2,  X0B, Y0B
+    fma       Ty,  t2,  Y0B, X0B
+    fnms      x03, c2,  Tx,  X03    
+    fma       y03, c2,  Ty,  Y03    
+    fma       x0B, c2,  Tx,  X03    
+    fnms      y0B, c2,  Ty,  Y03    
+
+    // 90  
+    fs        x04, X04, Y0C
+    fa        y04, Y04, X0C
+    fa        x0C, X04, Y0C
+    fs        y0C, Y04, X0C
+    
+    fma       Tx,  t2,  X0D, Y0D
+    fnms      Ty,  t2,  Y0D, X0D
+    fnms      x05, c2,  Tx,  X05    
+    fma       y05, c2,  Ty,  Y05    
+    fma       x0D, c2,  Tx,  X05    
+    fnms      y0D, c2,  Ty,  Y05    
+
+    // 135  
+    fa        Tx,  Y0E, X0E
+    fs        Ty,  X0E, Y0E  
+    fnms      x06, c4,  Tx,  X06  
+    fma       y06, c4,  Ty,  Y06  
+    fma       x0E, c4,  Tx,  X06  
+    fnms      y0E, c4,  Ty,  Y06  
+
+    fma       Tx,  t2,  Y0F, X0F
+    fnms      Ty,  t2,  X0F, Y0F
+    fnms      x07, c2,  Tx,  X07  
+    fnms      y07, c2,  Ty,  Y07  
+    fma       x0F, c2,  Tx,  X07  
+    fma       y0F, c2,  Ty,  Y07  
+
+    // 0
+    fa        x10, X10, X18
+    fa        y10, Y10, Y18
+    fs        x18, X10, X18
+    fs        y18, Y10, Y18
+    
+    fnms      Tx,  t2,  Y19, X19
+    fma       Ty,  t2,  X19, Y19
+    fma       x11, c2,  Tx,  X11  
+    fma       y11, c2,  Ty,  Y11  
+    fnms      x19, c2,  Tx,  X11  
+    fnms      y19, c2,  Ty,  Y11  
+
+    // 45
+    fs        Tx,  X1A, Y1A
+    fa        Ty,  Y1A, X1A  
+    fma       x12, c4,  Tx,  X12  
+    fma       y12, c4,  Ty,  Y12  
+    fnms      x1A, c4,  Tx,  X12  
+    fnms      y1A, c4,  Ty,  Y12  
+
+    fnms      Tx,  t2,  X1B, Y1B
+    fma       Ty,  t2,  Y1B, X1B
+    fnms      x13, c2,  Tx,  X13    
+    fma       y13, c2,  Ty,  Y13    
+    fma       x1B, c2,  Tx,  X13    
+    fnms      y1B, c2,  Ty,  Y13    
+
+    // 90  
+    fs        x14, X14, Y1C
+    fa        y14, Y14, X1C
+    fa        x1C, X14, Y1C
+    fs        y1C, Y14, X1C
+    
+    fma       Tx,  t2,  X1D, Y1D
+    fnms      Ty,  t2,  Y1D, X1D
+    fnms      x15, c2,  Tx,  X15    
+    fma       y15, c2,  Ty,  Y15    
+    fma       x1D, c2,  Tx,  X15    
+    fnms      y1D, c2,  Ty,  Y15    
+
+    // 135  
+    fa        Tx,  Y1E, X1E
+    fs        Ty,  X1E, Y1E  
+    fnms      x16, c4,  Tx,  X16  
+    fma       y16, c4,  Ty,  Y16  
+    fma       x1E, c4,  Tx,  X16  
+    fnms      y1E, c4,  Ty,  Y16  
+
+    fma       Tx,  t2,  Y1F, X1F
+    fnms      Ty,  t2,  X1F, Y1F
+    fnms      x17, c2,  Tx,  X17  
+    fnms      y17, c2,  Ty,  Y17  
+    fma       x1F, c2,  Tx,  X17  
+    fma       y1F, c2,  Ty,  Y17  
+
+
+
+    // 1x16 butterflies of size 16
+    // ---------------------------
+  
+    // z00,z10  z01,z11  z02,z12  z03,z13  z04,z14  z05,z15  z06,z16  z07,z17  z08,z18  z09,z19  z0A,z1A  z0B,z1B  z0C,z1C  z0D,z1D  z0E,z1E  z0F,z1F
+
+    // 0
+    fa        X00, x00, x10
+    fa        Y00, y00, y10
+    fs        X10, x00, x10
+    fs        Y10, y00, y10
+    
+    fnms      Tx,  t1,  y11, x11
+    fma       Ty,  t1,  x11, y11
+    fma       X01, c1,  Tx,  x01  
+    fma       Y01, c1,  Ty,  y01  
+    fnms      X11, c1,  Tx,  x01  
+    fnms      Y11, c1,  Ty,  y01  
+
+    fnms      Tx,  t2,  y12, x12
+    fma       Ty,  t2,  x12, y12
+    fma       X02, c2,  Tx,  x02  
+    fma       Y02, c2,  Ty,  y02  
+    fnms      X12, c2,  Tx,  x02  
+    fnms      Y12, c2,  Ty,  y02  
+
+    fnms      Tx,  t3,  y13, x13
+    fma       Ty,  t3,  x13, y13
+    fma       X03, c3,  Tx,  x03  
+    fma       Y03, c3,  Ty,  y03  
+    fnms      X13, c3,  Tx,  x03  
+    fnms      Y13, c3,  Ty,  y03  
+
+    // 45
+    fs        Tx,  x14, y14
+    fa        Ty,  y14, x14
+    fma       X04, c4,  Tx,  x04  
+    fma       Y04, c4,  Ty,  y04  
+    fnms      X14, c4,  Tx,  x04  
+    fnms      Y14, c4,  Ty,  y04  
+
+    fnms      Tx,  t3,  x15, y15
+    fma       Ty,  t3,  y15, x15
+    fnms      X05, c3,  Tx,  x05    
+    fma       Y05, c3,  Ty,  y05    
+    fma       X15, c3,  Tx,  x05    
+    fnms      Y15, c3,  Ty,  y05    
+    
+    fnms      Tx,  t2,  x16, y16
+    fma       Ty,  t2,  y16, x16
+    fnms      X06, c2,  Tx,  x06    
+    fma       Y06, c2,  Ty,  y06    
+    fma       X16, c2,  Tx,  x06    
+    fnms      Y16, c2,  Ty,  y06    
+    
+    fnms      Tx,  t1,  x17, y17
+    fma       Ty,  t1,  y17, x17
+    fnms      X07, c1,  Tx,  x07    
+    fma       Y07, c1,  Ty,  y07    
+    fma       X17, c1,  Tx,  x07    
+    fnms      Y17, c1,  Ty,  y07    
+
+    // 90    
+    fs        X08, x08, y18
+    fa        Y08, y08, x18
+    fa        X18, x08, y18
+    fs        Y18, y08, x18
+                       
+    fma       Tx,  t1,  x19, y19
+    fnms      Ty,  t1,  y19, x19
+    fnms      X09, c1,  Tx,  x09    
+    fma       Y09, c1,  Ty,  y09    
+    fma       X19, c1,  Tx,  x09    
+    fnms      Y19, c1,  Ty,  y09
+    
+    fma       Tx,  t2,  x1A, y1A
+    fnms      Ty,  t2,  y1A, x1A
+    fnms      X0A, c2,  Tx,  x0A    
+    fma       Y0A, c2,  Ty,  y0A    
+    fma       X1A, c2,  Tx,  x0A    
+    fnms      Y1A, c2,  Ty,  y0A
+    
+    fma       Tx,  t3,  x1B, y1B
+    fnms      Ty,  t3,  y1B, x1B
+    fnms      X0B, c3,  Tx,  x0B    
+    fma       Y0B, c3,  Ty,  y0B    
+    fma       X1B, c3,  Tx,  x0B    
+    fnms      Y1B, c3,  Ty,  y0B
+
+    // 135    
+    fa        Tx,  y1C, x1C
+    fs        Ty,  x1C, y1C
+    fnms      X0C, c4,  Tx,  x0C    
+    fma       Y0C, c4,  Ty,  y0C    
+    fma       X1C, c4,  Tx,  x0C    
+    fnms      Y1C, c4,  Ty,  y0C
+    
+    fma       Tx,  t3,  y1D, x1D
+    fnms      Ty,  t3,  x1D, y1D
+    fnms      X0D, c3,  Tx,  x0D    
+    fnms      Y0D, c3,  Ty,  y0D    
+    fma       X1D, c3,  Tx,  x0D    
+    fma       Y1D, c3,  Ty,  y0D    
+
+    fma       Tx,  t2,  y1E, x1E
+    fnms      Ty,  t2,  x1E, y1E
+    fnms      X0E, c2,  Tx,  x0E    
+    fnms      Y0E, c2,  Ty,  y0E    
+    fma       X1E, c2,  Tx,  x0E    
+    fma       Y1E, c2,  Ty,  y0E    
+    
+    fma       Tx,  t1,  y1F, x1F
+    fnms      Ty,  t1,  x1F, y1F
+    fnms      X0F, c1,  Tx,  x0F    
+    fnms      Y0F, c1,  Ty,  y0F    
+    fma       X1F, c1,  Tx,  x0F    
+    fma       Y1F, c1,  Ty,  y0F    
+    
+
+    
+    ai        x, x, 16
+    ai        y, y, 16
+    
+    
+    // store 128 real values
+    stqd      X00,-0x010(x)
+    stqd      X01, 0x070(x)
+    stqd      X02, 0x0F0(x)
+    stqd      X03, 0x170(x)
+    stqd      X04, 0x1F0(x)
+    stqd      X05, 0x270(x)
+    stqd      X06, 0x2F0(x)
+    stqd      X07, 0x370(x)
+    stqd      X08, 0x3F0(x)
+    stqd      X09, 0x470(x)
+    stqd      X0A, 0x4F0(x)
+    stqd      X0B, 0x570(x)
+    stqd      X0C, 0x5F0(x)
+    stqd      X0D, 0x670(x)
+    stqd      X0E, 0x6F0(x)
+    stqd      X0F, 0x770(x)
+    stqd      X10, 0x7F0(x)
+    stqd      X11, 0x870(x)
+    stqd      X12, 0x8F0(x)
+    stqd      X13, 0x970(x)
+    stqd      X14, 0x9F0(x)
+    stqd      X15, 0xA70(x)
+    stqd      X16, 0xAF0(x)
+    stqd      X17, 0xB70(x)
+    stqd      X18, 0xBF0(x)
+    stqd      X19, 0xC70(x)
+    stqd      X1A, 0xCF0(x)
+    stqd      X1B, 0xD70(x)
+    stqd      X1C, 0xDF0(x)
+    stqd      X1D, 0xE70(x)
+    stqd      X1E, 0xEF0(x)
+    stqd      X1F, 0xF70(x)
+
+    // store 128 imaginary values
+    stqd      Y00,-0x010(y)
+    stqd      Y01, 0x070(y)
+    stqd      Y02, 0x0F0(y)
+    stqd      Y03, 0x170(y)
+    stqd      Y04, 0x1F0(y)
+    stqd      Y05, 0x270(y)
+    stqd      Y06, 0x2F0(y)
+    stqd      Y07, 0x370(y)
+    stqd      Y08, 0x3F0(y)
+    stqd      Y09, 0x470(y)
+    stqd      Y0A, 0x4F0(y)
+    stqd      Y0B, 0x570(y)
+    stqd      Y0C, 0x5F0(y)
+    stqd      Y0D, 0x670(y)
+    stqd      Y0E, 0x6F0(y)
+    stqd      Y0F, 0x770(y)
+    stqd      Y10, 0x7F0(y)
+    stqd      Y11, 0x870(y)
+    stqd      Y12, 0x8F0(y)
+    stqd      Y13, 0x970(y)
+    stqd      Y14, 0x9F0(y)
+    stqd      Y15, 0xA70(y)
+    stqd      Y16, 0xAF0(y)
+    stqd      Y17, 0xB70(y)
+    stqd      Y18, 0xBF0(y)
+    stqd      Y19, 0xC70(y)
+    stqd      Y1A, 0xCF0(y)
+    stqd      Y1B, 0xD70(y)
+    stqd      Y1C, 0xDF0(y)
+    stqd      Y1D, 0xE70(y)
+    stqd      Y1E, 0xEF0(y)
+    stqd      Y1F, 0xF70(y)
+    
+    
+    
+    ai        cnt, cnt, -4
+
+    brnz      cnt, loop
+
+    
+.endfunc
+
+
+
+
+
+    // DIT butterfly
+    // -------------
+    //
+    //
+    // z0' = z0 + w*z1
+    // z1' = z0 - w*z1
+    //
+    //
+    //
+    // Tx  = c*x1 - s*y1
+    // Ty  = c*y1 + s*x1
+    //
+    // x0' = x0 + Tx
+    // y0' = y0 + Ty
+    //
+    // x1' = x0 - Tx
+    // y1' = y0 - Ty
+    //
+    //
+    //
+    // For 0 degrees use
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = x0 - x1
+    // y1' = y0 - y1
+    //
+    //
+    //
+    // For 0-45 degrees use
+    //
+    // Tx  = x1 - t*y1
+    // Ty  = y1 + t*x1
+    //
+    // x0' = x0 + c*Tx
+    // y0' = y0 + c*Ty
+    //
+    // x1' = x0 - c*Tx
+    // y1' = y0 - c*Ty
+    //
+    //
+    //
+    // For 45 degrees use
+    //
+    // Tx  = x1 - y1
+    // Ty  = y1 + x1
+    //
+    // x0' = x0 + c4*Tx
+    // y0' = y0 + c4*Ty
+    //
+    // x1' = x0 - c4*Tx
+    // y1' = y0 - c4*Ty
+    //
+    //
+    //
+    // For 45-90 degrees use
+    //
+    // Tx  = y1 - x1/t = y1 - t'*x1   where t'=tan(90-theta)
+    // Ty  = x1 + y1/t = x1 + t'*y1
+    //
+    // x0' = x0 - s*Tx = x0 - c'*Tx   where c'=cos(90-theta)
+    // y0' = y0 + s*Ty = y0 + c'*Ty
+    //
+    // x1' = x0 + s*Tx = x0 + c'*Tx 
+    // y1' = y0 - s*Ty = y0 - c'*Ty
+    //
+    //
+    //
+    // For 90 degrees use
+    //
+    // x0' = x0 - y1
+    // y0' = y0 + x1
+    //
+    // x1' = x0 + y1 
+    // y1' = y0 - x1
+    //
+    //
+    //
+    // For 90-135 degrees use
+    //
+    // Tx  = y1 - x1/t = y1 + t'*x1   where t'=tan(theta-90)
+    // Ty  = x1 + y1/t = x1 - t'*y1
+    //
+    // x0' = x0 - s*Tx = x0 - c'*Tx   where c'=cos(theta-90)
+    // y0' = y0 + s*Ty = y0 + c'*Ty
+    //
+    // x1' = x0 + s*Tx = x0 + c'*Tx 
+    // y1' = y0 - s*Ty = y0 - c'*Ty
+    //
+    //
+    //
+    // For 135 degrees use
+    //
+    // Tx  = y1 + x1
+    // Ty  = x1 - y1
+    //
+    // x0' = x0 - c4*Tx
+    // y0' = y0 + c4*Ty
+    //
+    // x1' = x0 + c4*Tx 
+    // y1' = y0 - c4*Ty
+    //
+    //
+    //
+    // For 135-180 degrees use
+    //
+    // Tx  = x1 - t*y1 = x1 + t'*y1   where t'=tan(180-theta)
+    // Ty  = y1 + t*x1 = y1 - t'*x1
+    //
+    // x0' = x0 + c*Tx = x0 - c'*Tx   where c'=cos(180-theta)
+    // y0' = y0 + c*Ty = y0 - c'*Ty
+    //
+    // x1' = x0 - c*Tx = x0 + c'*Tx
+    // y1' = y0 - c*Ty = y0 + c'*Ty
+    
+    
+    
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_InvFFT32_DIT_rows_sep_asm(f32 x[], f32 y[], u32 cnt)
+// 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+.cfunc void R2O_InvFFT32_DIT_rows_sep_asm(f32 *x, f32 *y, u32 cnt)
+
+    .reg      x0123, x4567, x89AB, xCDEF, xGHIJ, xKLMN, xOPQR, xSTUV
+    .reg      y0123, y4567, y89AB, yCDEF, yGHIJ, yKLMN, yOPQR, ySTUV
+    .reg      x0246, x8ACE, xGIKM, xOQSU, x1357, x9BDF, xHJLN, xPRTV
+    .reg      y0246, y8ACE, yGIKM, yOQSU, y1357, y9BDF, yHJLN, yPRTV
+    .reg      x048C, xGKOS, x159D, xHLPT, x26AE, xIMQU, x37BF, xJNRV
+    .reg      y048C, yGKOS, y159D, yHLPT, y26AE, yIMQU, y37BF, yJNRV
+    .reg      x08GO, x19HP, x2AIQ, x3BJR, x4CKS, x5DLT, x6EMU, x7FNV
+    .reg      y08GO, y19HP, y2AIQ, y3BJR, y4CKS, y5DLT, y6EMU, y7FNV
+    .reg      x0G1H, x2I3J, x4K5L, x6M7N, x8O9P, xAQBR, xCSDT, xEUFV
+    .reg      y0G1H, y2I3J, y4K5L, y6M7N, y8O9P, yAQBR, yCSDT, yEUFV
+    
+    .reg      X0123, X4567, X89AB, XCDEF, XGHIJ, XKLMN, XOPQR, XSTUV
+    .reg      Y0123, Y4567, Y89AB, YCDEF, YGHIJ, YKLMN, YOPQR, YSTUV
+    .reg      X0246, X8ACE, XGIKM, XOQSU, X1357, X9BDF, XHJLN, XPRTV
+    .reg      Y0246, Y8ACE, YGIKM, YOQSU, Y1357, Y9BDF, YHJLN, YPRTV
+    .reg      X048C, XGKOS, X159D, XHLPT, X26AE, XIMQU, X37BF, XJNRV
+    .reg      Y048C, YGKOS, Y159D, YHLPT, Y26AE, YIMQU, Y37BF, YJNRV
+    .reg      X08GO, X19HP, X2AIQ, X3BJR, X4CKS, X5DLT, X6EMU, X7FNV
+    .reg      Y08GO, Y19HP, Y2AIQ, Y3BJR, Y4CKS, Y5DLT, Y6EMU, Y7FNV
+    .reg      X0G1H, X2I3J, X4K5L, X6M7N, X8O9P, XAQBR, XCSDT, XEUFV
+    .reg      Y0G1H, Y2I3J, Y4K5L, Y6M7N, Y8O9P, YAQBR, YCSDT, YEUFV
+    
+    .reg      Tx, Ty
+    
+    .reg      c0123, c4567, c0022, c4466, c4444
+    .reg      t0123, t4567, t0022, t4466
+    
+    .reg      shuf_ACac, shuf_BDbd
+    .extern   shuf_ACac, shuf_BDbd
+    
+    lqa       shuf_ACac, shuf_ACac
+    lqa       shuf_BDbd, shuf_BDbd
+    
+    il128     c0123, 0x3F800000_3F7B14BE_3F6C835E_3F54DB31
+    il128     c4567, 0x3F3504F3_3F0E39DA_3EC3EF15_3E47C5C2
+    il128     c0022, 0x3F800000_3F800000_3F6C835E_3F6C835E
+    il128     c4466, 0x3F3504F3_3F3504F3_3EC3EF15_3EC3EF15
+    il128     c4444, 0x3F3504F3_3F3504F3_3F3504F3_3F3504F3
+    il128     t0123, 0x00000000_3E4BAFAF_3ED413CD_3F2B0DC1
+    il128     t4567, 0x3F800000_3FBF90C7_401A827A_40A0DFF7
+    il128     t0022, 0x00000000_00000000_3ED413CD_3ED413CD
+    il128     t4466, 0x3F800000_3F800000_401A827A_401A827A
+    
+    
+    
+
+loop:
+
+    // load 32 real values
+    lqd       x0123, 0x00(x)
+    lqd       x4567, 0x10(x)
+    lqd       x89AB, 0x20(x)
+    lqd       xCDEF, 0x30(x)
+    lqd       xGHIJ, 0x40(x)
+    lqd       xKLMN, 0x50(x)
+    lqd       xOPQR, 0x60(x)
+    lqd       xSTUV, 0x70(x)
+    
+    // load 32 imaginary values
+    lqd       y0123, 0x00(y)
+    lqd       y4567, 0x10(y)
+    lqd       y89AB, 0x20(y)
+    lqd       yCDEF, 0x30(y)
+    lqd       yGHIJ, 0x40(y)
+    lqd       yKLMN, 0x50(y)
+    lqd       yOPQR, 0x60(y)
+    lqd       ySTUV, 0x70(y)
+    
+    
+
+
+
+    // 16x1 butterflies of size 1
+    // --------------------------
+    //
+    // (0)
+    // 01
+    // 23
+    // 45
+    // 67
+    // 89
+    // AB
+    // CD
+    // EF
+    // GH
+    // IJ
+    // KL
+    // MN
+    // OP
+    // QR
+    // ST
+    // UV
+    //
+    // vectorized as... 
+    //
+    // (0,0,0,0)
+    // 0246
+    // 1357
+    //
+    // 8ACE
+    // 9BDF
+    //
+    // GIKM
+    // HJLN
+    //
+    // OQSU
+    // PRTV
+    
+    // 0,0,0,0
+    shufb     X0246, x0123, x4567, shuf_ACac
+    shufb     Y0246, y0123, y4567, shuf_ACac
+    shufb     X1357, x0123, x4567, shuf_BDbd
+    shufb     Y1357, y0123, y4567, shuf_BDbd
+    fa        x0246, X0246, X1357
+    fa        y0246, Y0246, Y1357
+    fs        x1357, X0246, X1357
+    fs        y1357, Y0246, Y1357
+    
+    // 0,0,0,0
+    shufb     X8ACE, x89AB, xCDEF, shuf_ACac
+    shufb     Y8ACE, y89AB, yCDEF, shuf_ACac
+    shufb     X9BDF, x89AB, xCDEF, shuf_BDbd
+    shufb     Y9BDF, y89AB, yCDEF, shuf_BDbd
+    fa        x8ACE, X8ACE, X9BDF
+    fa        y8ACE, Y8ACE, Y9BDF
+    fs        x9BDF, X8ACE, X9BDF
+    fs        y9BDF, Y8ACE, Y9BDF
+    
+    // 0,0,0,0
+    shufb     XGIKM, xGHIJ, xKLMN, shuf_ACac
+    shufb     YGIKM, yGHIJ, yKLMN, shuf_ACac
+    shufb     XHJLN, xGHIJ, xKLMN, shuf_BDbd
+    shufb     YHJLN, yGHIJ, yKLMN, shuf_BDbd
+    fa        xGIKM, XGIKM, XHJLN
+    fa        yGIKM, YGIKM, YHJLN
+    fs        xHJLN, XGIKM, XHJLN
+    fs        yHJLN, YGIKM, YHJLN
+    
+    // 0,0,0,0
+    shufb     XOQSU, xOPQR, xSTUV, shuf_ACac
+    shufb     YOQSU, yOPQR, ySTUV, shuf_ACac
+    shufb     XPRTV, xOPQR, xSTUV, shuf_BDbd
+    shufb     YPRTV, yOPQR, ySTUV, shuf_BDbd
+    fa        xOQSU, XOQSU, XPRTV
+    fa        yOQSU, YOQSU, YPRTV
+    fs        xPRTV, XOQSU, XPRTV
+    fs        yPRTV, YOQSU, YPRTV
+    
+    
+    
+    
+    // 8x2 butterflies of size 2
+    // -------------------------
+    //
+    // (0) (90)
+    // 02   13
+    // 46   57
+    // 8A   9B
+    // CE   DF
+    // GI   HJ
+    // KM   LM
+    // OQ   PR
+    // SU   TV
+    //
+    // vectorized as... 
+    //
+    // (0,0,0,0)  (90,90,90,90)
+    // 048C       159B
+    // 26AE       37BF
+    //
+    // GKOS       HJPT
+    // IMQU       JNRV
+    
+    // 0,0,0,0
+    shufb     X048C, x0246, x8ACE, shuf_ACac
+    shufb     Y048C, y0246, y8ACE, shuf_ACac
+    shufb     X26AE, x0246, x8ACE, shuf_BDbd
+    shufb     Y26AE, y0246, y8ACE, shuf_BDbd
+    fa        x048C, X048C, X26AE
+    fa        y048C, Y048C, Y26AE
+    fs        x26AE, X048C, X26AE
+    fs        y26AE, Y048C, Y26AE
+    
+    // 90,90,90,90
+    shufb     X159D, x1357, x9BDF, shuf_ACac
+    shufb     Y159D, y1357, y9BDF, shuf_ACac
+    shufb     X37BF, x1357, x9BDF, shuf_BDbd
+    shufb     Y37BF, y1357, y9BDF, shuf_BDbd
+    fs        x159D, X159D, Y37BF
+    fa        y159D, Y159D, X37BF
+    fa        x37BF, X159D, Y37BF
+    fs        y37BF, Y159D, X37BF
+    
+    // 0,0,0,0
+    shufb     XGKOS, xGIKM, xOQSU, shuf_ACac
+    shufb     YGKOS, yGIKM, yOQSU, shuf_ACac
+    shufb     XIMQU, xGIKM, xOQSU, shuf_BDbd
+    shufb     YIMQU, yGIKM, yOQSU, shuf_BDbd
+    fa        xGKOS, XGKOS, XIMQU
+    fa        yGKOS, YGKOS, YIMQU
+    fs        xIMQU, XGKOS, XIMQU
+    fs        yIMQU, YGKOS, YIMQU
+    
+    // 90,90,90,90
+    shufb     XHLPT, xHJLN, xPRTV, shuf_ACac
+    shufb     YHLPT, yHJLN, yPRTV, shuf_ACac
+    shufb     XJNRV, xHJLN, xPRTV, shuf_BDbd
+    shufb     YJNRV, yHJLN, yPRTV, shuf_BDbd
+    fs        xHLPT, XHLPT, YJNRV
+    fa        yHLPT, YHLPT, XJNRV
+    fa        xJNRV, XHLPT, YJNRV
+    fs        yJNRV, YHLPT, XJNRV
+
+    // 4x4 butterflies of size 4
+    // -------------------------
+    //
+    // (0) (45) (90) (135)
+    // 04   15   26   37
+    // 8C   9D   AE   BF
+    // GK   HL   IM   JN
+    // OS   PT   QU   RV
+    //
+    // vectorized as... 
+    //
+    // (0,0,0,0)  (45,45,45,45) (90,90,90,90) (135,135,135,135)
+    // 08GO       19HP          2AIQ          3BJR
+    // 4CKS       5DLT          6EMU          7FNV
+    
+    
+    
+    
+    // 0,0,0,0
+    shufb     X08GO, x048C, xGKOS, shuf_ACac
+    shufb     Y08GO, y048C, yGKOS, shuf_ACac
+    shufb     X4CKS, x048C, xGKOS, shuf_BDbd
+    shufb     Y4CKS, y048C, yGKOS, shuf_BDbd
+    fa        x08GO, X08GO, X4CKS
+    fa        y08GO, Y08GO, Y4CKS
+    fs        x4CKS, X08GO, X4CKS
+    fs        y4CKS, Y08GO, Y4CKS
+    
+    // 45,45,45,45
+    shufb     X19HP, x159D, xHLPT, shuf_ACac
+    shufb     Y19HP, y159D, yHLPT, shuf_ACac
+    shufb     X5DLT, x159D, xHLPT, shuf_BDbd
+    shufb     Y5DLT, y159D, yHLPT, shuf_BDbd
+    fs        Tx,    X5DLT, Y5DLT
+    fa        Ty,    Y5DLT, X5DLT
+    fma       x19HP, c4444, Tx,    X19HP
+    fma       y19HP, c4444, Ty,    Y19HP
+    fnms      x5DLT, c4444, Tx,    X19HP
+    fnms      y5DLT, c4444, Ty,    Y19HP
+
+    // 90,90,90,90
+    shufb     X2AIQ, x26AE, xIMQU, shuf_ACac
+    shufb     Y2AIQ, y26AE, yIMQU, shuf_ACac
+    shufb     X6EMU, x26AE, xIMQU, shuf_BDbd
+    shufb     Y6EMU, y26AE, yIMQU, shuf_BDbd
+    fs        x2AIQ, X2AIQ, Y6EMU
+    fa        y2AIQ, Y2AIQ, X6EMU
+    fa        x6EMU, X2AIQ, Y6EMU
+    fs        y6EMU, Y2AIQ, X6EMU
+    
+    // 135,135,135,135
+    shufb     X3BJR, x37BF, xJNRV, shuf_ACac
+    shufb     Y3BJR, y37BF, yJNRV, shuf_ACac
+    shufb     X7FNV, x37BF, xJNRV, shuf_BDbd
+    shufb     Y7FNV, y37BF, yJNRV, shuf_BDbd
+    fa        Tx,    Y7FNV, X7FNV
+    fs        Ty,    X7FNV, Y7FNV
+    fnms      x3BJR, c4444, Tx,    X3BJR
+    fma       y3BJR, c4444, Ty,    Y3BJR
+    fma       x7FNV, c4444, Tx,    X3BJR
+    fnms      y7FNV, c4444, Ty,    Y3BJR
+    
+    
+    
+    // 2x8 butterflies of size 8
+    // -------------------------
+    //
+    // (0) (22) (45) (67) (90) (112) (135) (157)
+    // 08   19   2A   3B   4C   5D    6E    7F
+    // GO   HP   IQ   JR   KS   LT    MU    NV
+    //
+    // vectorized as... 
+    //
+    // (0,0,22,22) (45,45,67,67) (90,90,112,112) (135,135,157,157)
+    // 0G1H        2I3J          4K5L            6M7N
+    // 8O9P        AQBR          CSDT            EUFV
+
+    // 0,0,22,22
+    shufb     X0G1H, x08GO, x19HP, shuf_ACac
+    shufb     Y0G1H, y08GO, y19HP, shuf_ACac
+    shufb     X8O9P, x08GO, x19HP, shuf_BDbd
+    shufb     Y8O9P, y08GO, y19HP, shuf_BDbd
+    fnms      Tx,    t0022, Y8O9P, X8O9P
+    fma       Ty,    t0022, X8O9P, Y8O9P
+    fma       x0G1H, c0022, Tx,    X0G1H
+    fma       y0G1H, c0022, Ty,    Y0G1H
+    fnms      x8O9P, c0022, Tx,    X0G1H
+    fnms      y8O9P, c0022, Ty,    Y0G1H
+    
+    // 45,45,67,67
+    shufb     X2I3J, x2AIQ, x3BJR, shuf_ACac
+    shufb     Y2I3J, y2AIQ, y3BJR, shuf_ACac
+    shufb     XAQBR, x2AIQ, x3BJR, shuf_BDbd
+    shufb     YAQBR, y2AIQ, y3BJR, shuf_BDbd
+    fnms      Tx,    t4466, YAQBR, XAQBR
+    fma       Ty,    t4466, XAQBR, YAQBR
+    fma       x2I3J, c4466, Tx,    X2I3J
+    fma       y2I3J, c4466, Ty,    Y2I3J
+    fnms      xAQBR, c4466, Tx,    X2I3J
+    fnms      yAQBR, c4466, Ty,    Y2I3J
+    
+    // 90,90,112,112
+    shufb     X4K5L, x4CKS, x5DLT, shuf_ACac
+    shufb     Y4K5L, y4CKS, y5DLT, shuf_ACac
+    shufb     XCSDT, x4CKS, x5DLT, shuf_BDbd
+    shufb     YCSDT, y4CKS, y5DLT, shuf_BDbd
+    fma       Tx,    t0022, XCSDT, YCSDT
+    fnms      Ty,    t0022, YCSDT, XCSDT
+    fnms      x4K5L, c0022, Tx,    X4K5L
+    fma       y4K5L, c0022, Ty,    Y4K5L
+    fma       xCSDT, c0022, Tx,    X4K5L
+    fnms      yCSDT, c0022, Ty,    Y4K5L
+    
+    // 135,135,157,157
+    shufb     X6M7N, x6EMU, x7FNV, shuf_ACac
+    shufb     Y6M7N, y6EMU, y7FNV, shuf_ACac
+    shufb     XEUFV, x6EMU, x7FNV, shuf_BDbd
+    shufb     YEUFV, y6EMU, y7FNV, shuf_BDbd
+    fma       Tx,    t4466, XEUFV, YEUFV
+    fnms      Ty,    t4466, YEUFV, XEUFV
+    fnms      x6M7N, c4466, Tx,    X6M7N
+    fma       y6M7N, c4466, Ty,    Y6M7N
+    fma       xEUFV, c4466, Tx,    X6M7N
+    fnms      yEUFV, c4466, Ty,    Y6M7N
+    
+    
+    
+    
+    // 1x16 butterflies of size 16
+    // ---------------------------
+    //
+    // (0) (11) (22) (33) (45) (56) (67) (78) (90) (101) (112) (123) (135) (146) (157) (168)
+    // 0G   1H   2I   3J   4K   5L   6M   7N   8O   9P    AQ    BR    CS    DT    EU    FV
+    //
+    // vectorized as... 
+    //
+    // (0,11,22,33) (45,56,67,78) (90,101,112,123) (135,146,157,168)
+    // 0123         4567         89AB             CDEF
+    // GHIJ         KLMN         OPQR             STUV
+    
+    // 0,11,22,33
+    shufb     X0123, x0G1H, x2I3J, shuf_ACac
+    shufb     Y0123, y0G1H, y2I3J, shuf_ACac
+    shufb     XGHIJ, x0G1H, x2I3J, shuf_BDbd
+    shufb     YGHIJ, y0G1H, y2I3J, shuf_BDbd
+    fnms      Tx,    t0123, YGHIJ, XGHIJ
+    fma       Ty,    t0123, XGHIJ, YGHIJ
+    fma       x0123, c0123, Tx,    X0123
+    fma       y0123, c0123, Ty,    Y0123
+    fnms      xGHIJ, c0123, Tx,    X0123
+    fnms      yGHIJ, c0123, Ty,    Y0123
+
+    // 45,56,67,78
+    shufb     X4567, x4K5L, x6M7N, shuf_ACac
+    shufb     Y4567, y4K5L, y6M7N, shuf_ACac
+    shufb     XKLMN, x4K5L, x6M7N, shuf_BDbd
+    shufb     YKLMN, y4K5L, y6M7N, shuf_BDbd
+    fnms      Tx,    t4567, YKLMN, XKLMN
+    fma       Ty,    t4567, XKLMN, YKLMN
+    fma       x4567, c4567, Tx,    X4567
+    fma       y4567, c4567, Ty,    Y4567
+    fnms      xKLMN, c4567, Tx,    X4567
+    fnms      yKLMN, c4567, Ty,    Y4567
+    
+    // 90,101,112,123
+    shufb     X89AB, x8O9P, xAQBR, shuf_ACac
+    shufb     Y89AB, y8O9P, yAQBR, shuf_ACac
+    shufb     XOPQR, x8O9P, xAQBR, shuf_BDbd
+    shufb     YOPQR, y8O9P, yAQBR, shuf_BDbd
+    fma       Tx,    t0123, XOPQR, YOPQR
+    fnms      Ty,    t0123, YOPQR, XOPQR
+    fnms      x89AB, c0123, Tx,    X89AB
+    fma       y89AB, c0123, Ty,    Y89AB
+    fma       xOPQR, c0123, Tx,    X89AB
+    fnms      yOPQR, c0123, Ty,    Y89AB
+
+    // 135,146,157,168
+    shufb     XCDEF, xCSDT, xEUFV, shuf_ACac
+    shufb     YCDEF, yCSDT, yEUFV, shuf_ACac
+    shufb     XSTUV, xCSDT, xEUFV, shuf_BDbd
+    shufb     YSTUV, yCSDT, yEUFV, shuf_BDbd
+    fma       Tx,    t4567, XSTUV, YSTUV
+    fnms      Ty,    t4567, YSTUV, XSTUV
+    fnms      xCDEF, c4567, Tx,    XCDEF
+    fma       yCDEF, c4567, Ty,    YCDEF
+    fma       xSTUV, c4567, Tx,    XCDEF
+    fnms      ySTUV, c4567, Ty,    YCDEF
+
+
+
+    ai        x, x, 128
+    ai        y, y, 128
+
+
+    // store 32 real values
+    stqd      x0123, -0x80(x)
+    stqd      x4567, -0x70(x)
+    stqd      x89AB, -0x60(x)
+    stqd      xCDEF, -0x50(x)
+    stqd      xGHIJ, -0x40(x)
+    stqd      xKLMN, -0x30(x)
+    stqd      xOPQR, -0x20(x)
+    stqd      xSTUV, -0x10(x)
+    
+    // store 32 imaginary values
+    stqd      y0123, -0x80(y)
+    stqd      y4567, -0x70(y)
+    stqd      y89AB, -0x60(y)
+    stqd      yCDEF, -0x50(y)
+    stqd      yGHIJ, -0x40(y)
+    stqd      yKLMN, -0x30(y)
+    stqd      yOPQR, -0x20(y)
+    stqd      ySTUV, -0x10(y)
+    
+    
+
+    
+    ai        cnt, cnt, -1
+    brnz      cnt, loop
+    
+    
+.endfunc
+
+
+
+
+
+
+
+
+
+
+    // DIF butterfly
+    // -------------
+    //
+    //
+    // z0' = z0 + z1
+    // z1' = w * (z0-z1)
+    //
+    //
+    //
+    // Fx  = x0 - x1
+    // Fy  = y0 - y1
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = c*Fx + s*Fy      where theta ranges over positive angles, i.e. s[i]=sin(+i*11.25)
+    // y1' = c*Fy - s*Fx
+    //
+    //
+    //
+    // For 0 degrees use
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = x0 - x1
+    // y1' = y0 - y1
+    //
+    //
+    //
+    // For 0-45 degrees use
+    //
+    // Fx  = x0 - x1
+    // Fy  = y0 - y1
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = Fx + t*Fy                // *c
+    // y1' = Fy - t*Fx                // *c
+    //
+    //
+    //
+    // For 45 degrees use
+    //
+    // Fx  = x0 - x1
+    // Fy  = y0 - y1
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = Fx + Fy                  // *c4
+    // y1' = Fy - Fx                  // *c4
+    //
+    //
+    //
+    // For 45-90 degrees use
+    //
+    // Fx  = x0 - x1
+    // Fy  = y0 - y1
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = t'*Fx + Fy               // *c'    where t'=tan(90-theta), c'=cos(90-theta)
+    // y1' = t'*Fy - Fx               // *c'
+    //
+    //
+    //
+    // For 90 degrees use
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = y0 - y1
+    // y1' = x1 - x0
+    //
+    //
+    //
+    // For 90-135 degrees use
+    //
+    // Fx  = x1 - x0
+    // Fy  = y1 - y0
+    //
+    // x0' = x1 + x0
+    // y0' = y1 + y0
+    //
+    // x1' = t'*Fx - Fy               // *c'    where t'=tan(theta-90), c'=cos(theta-90)
+    // y1' = t'*Fy + Fx               // *c'
+    //
+    //
+    //
+    // For 135 degrees use
+    //
+    // Fx  = x1 - x0
+    // Fy  = y1 - y0
+    //
+    // x0' = x1 + x0
+    // y0' = y1 + y0
+    //
+    // x1' = Fx - Fy                  // *c4
+    // y1' = Fy + Fx                  // *c4
+    //
+    //
+    //
+    // For 135-180 degrees use
+    //
+    // Fx  = x1 - x0
+    // Fy  = y1 - y0
+    //
+    // x0' = x1 + x0
+    // y0' = y1 + y0
+    //
+    // x1' = Fx - t*Fy                // *c'    where t'=tan(180-theta), c'=cos(180-theta)
+    // y1' = Fy + t*Fx
+    
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 
+// void R2O_FFT32_DIF_rows_sep_asm(f32 x[], f32 y[], u32 cnt)
+// 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+.cfunc void R2O_FFT32_DIF_rows_sep_asm(f32 *x, f32 *y, u32 cnt)
+
+    .reg      x0123, x4567, x89AB, xCDEF, xGHIJ, xKLMN, xOPQR, xSTUV
+    .reg      y0123, y4567, y89AB, yCDEF, yGHIJ, yKLMN, yOPQR, ySTUV
+    .reg      x0246, x8ACE, xGIKM, xOQSU, x1357, x9BDF, xHJLN, xPRTV
+    .reg      y0246, y8ACE, yGIKM, yOQSU, y1357, y9BDF, yHJLN, yPRTV
+    .reg      x048C, xGKOS, x159D, xHLPT, x26AE, xIMQU, x37BF, xJNRV
+    .reg      y048C, yGKOS, y159D, yHLPT, y26AE, yIMQU, y37BF, yJNRV
+    .reg      x08GO, x19HP, x2AIQ, x3BJR, x4CKS, x5DLT, x6EMU, x7FNV
+    .reg      y08GO, y19HP, y2AIQ, y3BJR, y4CKS, y5DLT, y6EMU, y7FNV
+    .reg      x0G1H, x2I3J, x4K5L, x6M7N, x8O9P, xAQBR, xCSDT, xEUFV
+    .reg      y0G1H, y2I3J, y4K5L, y6M7N, y8O9P, yAQBR, yCSDT, yEUFV
+    
+    .reg      X0123, X4567, X89AB, XCDEF, XGHIJ, XKLMN, XOPQR, XSTUV
+    .reg      Y0123, Y4567, Y89AB, YCDEF, YGHIJ, YKLMN, YOPQR, YSTUV
+    .reg      X0246, X8ACE, XGIKM, XOQSU, X1357, X9BDF, XHJLN, XPRTV
+    .reg      Y0246, Y8ACE, YGIKM, YOQSU, Y1357, Y9BDF, YHJLN, YPRTV
+    .reg      X048C, XGKOS, X159D, XHLPT, X26AE, XIMQU, X37BF, XJNRV
+    .reg      Y048C, YGKOS, Y159D, YHLPT, Y26AE, YIMQU, Y37BF, YJNRV
+    .reg      X08GO, X19HP, X2AIQ, X3BJR, X4CKS, X5DLT, X6EMU, X7FNV
+    .reg      Y08GO, Y19HP, Y2AIQ, Y3BJR, Y4CKS, Y5DLT, Y6EMU, Y7FNV
+    .reg      X0G1H, X2I3J, X4K5L, X6M7N, X8O9P, XAQBR, XCSDT, XEUFV
+    .reg      Y0G1H, Y2I3J, Y4K5L, Y6M7N, Y8O9P, YAQBR, YCSDT, YEUFV
+    
+    .reg      Fx, Fy
+    
+    .reg      c0044
+    .reg      t0123, t4567, t0022, t4466, t4422
+    .reg      c11XX, c22XX, cYYZZ
+    .reg      C0055, C0077
+    .reg      K4422
+    
+    .reg      shuf_AaBb, shuf_CcDd
+    .extern   shuf_AaBb, shuf_CcDd
+    
+    lqa       shuf_AaBb, shuf_AaBb
+    lqa       shuf_CcDd, shuf_CcDd
+    
+    il128     c0044, 0x3F800000_3F800000_3F3504F3_3F3504F3
+    il128     t0123, 0x00000000_3E4BAFAF_3ED413CD_3F2B0DC1
+    il128     t4567, 0x3F800000_3FBF90C7_401A827A_40A0DFF7
+    il128     t0022, 0x00000000_00000000_3ED413CD_3ED413CD
+    il128     t4466, 0x3F800000_3F800000_401A827A_401A827A
+    il128     t4422, 0x3F800000_3F800000_3ED413CD_3ED413CD
+
+    il128     c11XX, 0x3F7B14BE_3F7B14BE_3F318A86_3F318A86      // c11XX = c1111*c0044
+    il128     c22XX, 0x3F6C835E_3F6C835E_3F273D75_3F273D75      // c22XX = c2222*c0044
+    il128     cYYZZ, 0x3F67F7F8_3F67F7F8_3F2406CF_3F2406CF      // cYYZZ = c1111*c2222*c0044
+    il128     C0055, 0x3F800000_3F800000_3F110329_3F110329      // C0055 = (1, 1, c5/c1, c5/c1)
+    il128     C0077, 0x3F800000_3F800000_3E7043AB_3E7043AB      // C0077 = (1, 1, c7/c3, c7/c3)
+    il128     K4422, 0x3F5906BD_3F5906BD_3EB3CA5E_3EB3CA5E      // K4422 = (c3333/c1111) * t4422
+    
+
+loop:
+
+    // load 32 real values
+    lqd       x0123, 0x00(x)
+    lqd       x4567, 0x10(x)
+    lqd       x89AB, 0x20(x)
+    lqd       xCDEF, 0x30(x)
+    lqd       xGHIJ, 0x40(x)
+    lqd       xKLMN, 0x50(x)
+    lqd       xOPQR, 0x60(x)
+    lqd       xSTUV, 0x70(x)
+    
+    // load 32 imaginary values
+    lqd       y0123, 0x00(y)
+    lqd       y4567, 0x10(y)
+    lqd       y89AB, 0x20(y)
+    lqd       yCDEF, 0x30(y)
+    lqd       yGHIJ, 0x40(y)
+    lqd       yKLMN, 0x50(y)
+    lqd       yOPQR, 0x60(y)
+    lqd       ySTUV, 0x70(y)
+    
+
+
+    // 1x16 butterflies of size 16
+    // ---------------------------
+    //
+    // (0) (11) (22) (33) (45) (56) (67) (78) (90) (101) (112) (123) (135) (146) (157) (168)
+    // 0G   1H   2I   3J   4K   5L   6M   7N   8O   9P    AQ    BR    CS    DT    EU    FV
+    //
+    // vectorized as... 
+    //
+    // (0,11,22,33) (45,56,67,78) (90,101,112,123) (135,146,157,168)
+    // 0123         4567          89AB             CDEF
+    // GHIJ         KLMN          OPQR             STUV
+
+
+    
+    // For 0-45 degrees use
+    //
+    // Fx  = x0 - x1
+    // Fy  = y0 - y1
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = Fx + t*Fy                // *c
+    // y1' = Fy - t*Fx                // *c
+
+
+    // 0,11,22,33
+    fs        Fx,    x0123, xGHIJ
+    fs        Fy,    y0123, yGHIJ
+    fa        X0123, x0123, xGHIJ             // *c0000
+    fa        Y0123, y0123, yGHIJ             // *c0000
+    fma       XGHIJ, t0123, Fy,    Fx         // *c0123
+    fnms      YGHIJ, t0123, Fx,    Fy         // *c0123
+    shufb     x0G1H, X0123, XGHIJ, shuf_AaBb  // *c0001
+    shufb     y0G1H, Y0123, YGHIJ, shuf_AaBb  // *c0001
+    shufb     x2I3J, X0123, XGHIJ, shuf_CcDd  // *c0203
+    shufb     y2I3J, Y0123, YGHIJ, shuf_CcDd  // *c0203
+    
+    // 45,56,67,78
+    fs        Fx,    x4567, xKLMN
+    fs        Fy,    y4567, yKLMN
+    fa        X4567, x4567, xKLMN             // *c0000
+    fa        Y4567, y4567, yKLMN             // *c0000
+    fma       XKLMN, t4567, Fy,    Fx         // *c4567
+    fnms      YKLMN, t4567, Fx,    Fy         // *c4567
+    shufb     x4K5L, X4567, XKLMN, shuf_AaBb  // *c0405
+    shufb     y4K5L, Y4567, YKLMN, shuf_AaBb  // *c0405
+    shufb     x6M7N, X4567, XKLMN, shuf_CcDd  // *c0607
+    shufb     y6M7N, Y4567, YKLMN, shuf_CcDd  // *c0607
+
+    
+    // For 90-135 degrees use
+    //
+    // Fx  = x1 - x0
+    // Fy  = y1 - y0
+    //
+    // x0' = x1 + x0
+    // y0' = y1 + y0
+    //
+    // x1' = t'*Fx - Fy               // *c'    where t'=tan(theta-90), c'=cos(theta-90)
+    // y1' = t'*Fy + Fx               // *c'
+    
+    
+    // 90,101,112,123
+    fs        Fx,    xOPQR, x89AB
+    fs        Fy,    yOPQR, y89AB
+    fa        X89AB, xOPQR, x89AB             // *c0000
+    fa        Y89AB, yOPQR, y89AB             // *c0000
+    fms       XOPQR, t0123, Fx,    Fy         // *c0123
+    fma       YOPQR, t0123, Fy,    Fx         // *c0123
+    shufb     x8O9P, X89AB, XOPQR, shuf_AaBb  // *c0001
+    shufb     y8O9P, Y89AB, YOPQR, shuf_AaBb  // *c0001
+    shufb     xAQBR, X89AB, XOPQR, shuf_CcDd  // *c0203
+    shufb     yAQBR, Y89AB, YOPQR, shuf_CcDd  // *c0203
+    
+    // 135,146,157,168
+    fs        Fx,    xSTUV, xCDEF
+    fs        Fy,    ySTUV, yCDEF
+    fa        XCDEF, xSTUV, xCDEF             // *c0000
+    fa        YCDEF, ySTUV, yCDEF             // *c0000
+    fms       XSTUV, t4567, Fx,    Fy         // *c4567
+    fma       YSTUV, t4567, Fy,    Fx         // *c4567
+    shufb     xCSDT, XCDEF, XSTUV, shuf_AaBb  // *c0405
+    shufb     yCSDT, YCDEF, YSTUV, shuf_AaBb  // *c0405
+    shufb     xEUFV, XCDEF, XSTUV, shuf_CcDd  // *c0607
+    shufb     yEUFV, YCDEF, YSTUV, shuf_CcDd  // *c0607
+
+
+    
+    // 2x8 butterflies of size 8
+    // -------------------------
+    //
+    // (0) (22) (45) (67) (90) (112) (135) (157)
+    // 08   19   2A   3B   4C   5D    6E    7F
+    // GO   HP   IQ   JR   KS   LT    MU    NV
+    //
+    // vectorized as... 
+    //
+    // (0,0,22,22) (45,45,67,67) (90,90,112,112) (135,135,157,157)
+    // 0G1H        2I3J          4K5L            6M7N
+    // 8O9P        AQBR          CSDT            EUFV
+
+
+    // For 0-45 degrees use
+    //
+    // Fx  = x0 - x1
+    // Fy  = y0 - y1
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = Fx + t*Fy                // *c
+    // y1' = Fy - t*Fx                // *c
+
+
+    // 0,0,22,22
+    fs        Fx,    x0G1H, x8O9P             // *c0001
+    fs        Fy,    y0G1H, y8O9P             // *c0001
+    fa        X0G1H, x0G1H, x8O9P             // *c0001*c0000
+    fa        Y0G1H, y0G1H, y8O9P             // *c0001*c0000
+    fma       X8O9P, t0022, Fy,    Fx         // *c0001*c0022
+    fnms      Y8O9P, t0022, Fx,    Fy         // *c0001*c0022
+    shufb     x08GO, X0G1H, X8O9P, shuf_AaBb  // *c0000*c0000
+    shufb     y08GO, Y0G1H, Y8O9P, shuf_AaBb  // *c0000*c0000
+    shufb     x19HP, X0G1H, X8O9P, shuf_CcDd  // *c0011*c0202
+    shufb     y19HP, Y0G1H, Y8O9P, shuf_CcDd  // *c0011*c0202
+    
+    // 45,45,67,67
+    fs        Fx,    x2I3J, xAQBR             // *c0203
+    fs        Fy,    y2I3J, yAQBR             // *c0203
+    fa        X2I3J, x2I3J, xAQBR             // *c0203*c0000
+    fa        Y2I3J, y2I3J, yAQBR             // *c0203*c0000
+    fma       XAQBR, t4466, Fy,    Fx         // *c0203*c4466
+    fnms      YAQBR, t4466, Fx,    Fy         // *c0203*c4466
+    shufb     x2AIQ, X2I3J, XAQBR, shuf_AaBb  // *c0022*c0404
+    shufb     y2AIQ, Y2I3J, YAQBR, shuf_AaBb  // *c0022*c0404
+    shufb     x3BJR, X2I3J, XAQBR, shuf_CcDd  // *c0033*c0606
+    shufb     y3BJR, Y2I3J, YAQBR, shuf_CcDd  // *c0033*c0606
+    
+    
+    // For 90-135 degrees use
+    //
+    // Fx  = x1 - x0
+    // Fy  = y1 - y0
+    //
+    // x0' = x1 + x0
+    // y0' = y1 + y0
+    //
+    // x1' = t'*Fx - Fy               // *c'    where t'=tan(theta-90), c'=cos(theta-90)
+    // y1' = t'*Fy + Fx               // *c'
+    
+    
+    // 90,90,112,112
+    fs        Fx,    xCSDT, x4K5L             // *c0405
+    fs        Fy,    yCSDT, y4K5L             // *c0405
+    fa        X4K5L, xCSDT, x4K5L             // *c0405*c0000
+    fa        Y4K5L, yCSDT, y4K5L             // *c0405*c0000
+    fms       XCSDT, t0022, Fx,    Fy         // *c0405*c0022
+    fma       YCSDT, t0022, Fy,    Fx         // *c0405*c0022
+    shufb     x4CKS, X4K5L, XCSDT, shuf_AaBb  // *c0044*c0000
+    shufb     y4CKS, Y4K5L, YCSDT, shuf_AaBb  // *c0044*c0000
+    shufb     x5DLT, X4K5L, XCSDT, shuf_CcDd  // *c0055*c0202
+    shufb     y5DLT, Y4K5L, YCSDT, shuf_CcDd  // *c0055*c0202
+    
+    // 135,135,157,157
+    fs        Fx,    xEUFV, x6M7N             // *c0607
+    fs        Fy,    yEUFV, y6M7N             // *c0607
+    fa        X6M7N, xEUFV, x6M7N             // *c0607*c0000
+    fa        Y6M7N, yEUFV, y6M7N             // *c0607*c0000
+    fms       XEUFV, t4466, Fx,    Fy         // *c0607*c4466
+    fma       YEUFV, t4466, Fy,    Fx         // *c0607*c4466
+    shufb     x6EMU, X6M7N, XEUFV, shuf_AaBb  // *c0066*c0404
+    shufb     y6EMU, Y6M7N, YEUFV, shuf_AaBb  // *c0066*c0404
+    shufb     x7FNV, X6M7N, XEUFV, shuf_CcDd  // *c0077*c0606
+    shufb     y7FNV, Y6M7N, YEUFV, shuf_CcDd  // *c0077*c0606
+    
+    
+    
+
+    // 4x4 butterflies of size 4
+    // -------------------------
+    //
+    // (0) (45) (90) (135)
+    // 04   15   26   37
+    // 8C   9D   AE   BF
+    // GK   HL   IM   JN
+    // OS   PT   QU   RV
+    //
+    // vectorized as... 
+    //
+    // (0,0,0,0)  (45,45,45,45) (90,90,90,90) (135,135,135,135)
+    // 08GO       19HP          2AIQ          3BJR
+    // 4CKS       5DLT          6EMU          7FNV
+
+
+    
+    // For 0 degrees use
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = x0 - x1
+    // y1' = y0 - y1
+    
+    
+    // 0,0,0,0
+    fma       X08GO, c0044, x4CKS, x08GO
+    fma       Y08GO, c0044, y4CKS, y08GO
+    fnms      X4CKS, c0044, x4CKS, x08GO
+    fnms      Y4CKS, c0044, y4CKS, y08GO
+    shufb     x048C, X08GO, X4CKS, shuf_AaBb
+    shufb     y048C, Y08GO, Y4CKS, shuf_AaBb
+    shufb     xGKOS, X08GO, X4CKS, shuf_CcDd
+    shufb     yGKOS, Y08GO, Y4CKS, shuf_CcDd
+
+    
+    // For 45 degrees use
+    //
+    // Fx  = x0 - x1
+    // Fy  = y0 - y1
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = Fx + Fy                  // *c4
+    // y1' = Fy - Fx                  // *c4
+    
+    
+    // 45,45,45,45
+    fnms      Fx,    C0055, x5DLT, x19HP      // *c0011*c0202,    C0055 = (1, 1, c5/c1, c5/c1)
+    fnms      Fy,    C0055, y5DLT, y19HP      // *c0011*c0202
+    fma       X19HP, C0055, x5DLT, x19HP      // *c0011*c0202*c0000
+    fma       Y19HP, C0055, y5DLT, y19HP      // *c0011*c0202*c0000
+    fa        X5DLT, Fx,    Fy                // *c0011*c0202*c4444
+    fs        Y5DLT, Fy,    Fx                // *c0011*c0202*c4444
+    shufb     x159D, X19HP, X5DLT, shuf_AaBb  // *c0000*c0022*c0404
+    shufb     y159D, Y19HP, Y5DLT, shuf_AaBb  // *c0000*c0022*c0404
+    shufb     xHLPT, X19HP, X5DLT, shuf_CcDd  // *c1111*c0022*c0404
+    shufb     yHLPT, Y19HP, Y5DLT, shuf_CcDd  // *c1111*c0022*c0404
+
+    
+    // For 90 degrees use
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = y0 - y1
+    // y1' = x1 - x0
+    
+    
+    // 90,90,90,90
+    fma       X2AIQ, t4422, x6EMU, x2AIQ      // *c0022*c0404
+    fma       Y2AIQ, t4422, y6EMU, y2AIQ      // *c0022*c0404
+    fnms      X6EMU, t4422, y6EMU, y2AIQ      // *c0022*c0404
+    fms       Y6EMU, t4422, x6EMU, x2AIQ      // *c0022*c0404
+    shufb     x26AE, X2AIQ, X6EMU, shuf_AaBb  // *c0000*c0044
+    shufb     y26AE, Y2AIQ, Y6EMU, shuf_AaBb  // *c0000*c0044
+    shufb     xIMQU, X2AIQ, X6EMU, shuf_CcDd  // *c2222*c0044
+    shufb     yIMQU, Y2AIQ, Y6EMU, shuf_CcDd  // *c2222*c0044
+
+    
+    // For 135 degrees use
+    //
+    // Fx  = x1 - x0
+    // Fy  = y1 - y0
+    //
+    // x0' = x1 + x0
+    // y0' = y1 + y0
+    //
+    // x1' = Fx - Fy                  // *c4
+    // y1' = Fy + Fx                  // *c4
+    
+    
+    // 135,135,135,135
+    fms       Fx,    C0077, x7FNV, x3BJR      // *c0033*c0606,    C0077 = (1, 1, c7/c3, c7,c3)
+    fms       Fy,    C0077, y7FNV, y3BJR      // *c0033*c0606
+    fma       X3BJR, C0077, x7FNV, x3BJR      // *c0033*c0606*c0000
+    fma       Y3BJR, C0077, y7FNV, y3BJR      // *c0033*c0606*c0000
+    fs        X7FNV, Fx,    Fy                // *c0033*c0606*c4444
+    fa        Y7FNV, Fy,    Fx                // *c0033*c0606*c4444
+    shufb     x37BF, X3BJR, X7FNV, shuf_AaBb  // *c0000*c0066*c0404
+    shufb     y37BF, Y3BJR, Y7FNV, shuf_AaBb  // *c0000*c0066*c0404
+    shufb     xJNRV, X3BJR, X7FNV, shuf_CcDd  // *c3333*c0066*c0404
+    shufb     yJNRV, Y3BJR, Y7FNV, shuf_CcDd  // *c3333*c0066*c0404
+    
+    
+    
+    
+    // 8x2 butterflies of size 2
+    // -------------------------
+    //
+    // (0) (90)
+    // 02   13
+    // 46   57
+    // 8A   9B
+    // CE   DF
+    // GI   HJ
+    // KM   LM
+    // OQ   PR
+    // SU   TV
+    //
+    // vectorized as... 
+    //
+    // (0,0,0,0)  (90,90,90,90)
+    // 048C       159D
+    // 26AE       37BF
+    //
+    // GKOS       HLPT
+    // IMQU       JNRV
+    
+    
+    // For 0 degrees use
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = x0 - x1
+    // y1' = y0 - y1
+    
+    
+    // 0,0,0,0
+    fma       X048C, c0044, x26AE, x048C
+    fma       Y048C, c0044, y26AE, y048C
+    fnms      X26AE, c0044, x26AE, x048C
+    fnms      Y26AE, c0044, y26AE, y048C
+    shufb     x0246, X048C, X26AE, shuf_AaBb
+    shufb     y0246, Y048C, Y26AE, shuf_AaBb
+    shufb     x8ACE, X048C, X26AE, shuf_CcDd
+    shufb     y8ACE, Y048C, Y26AE, shuf_CcDd
+
+    
+    // For 90 degrees use
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = y0 - y1
+    // y1' = x1 - x0
+    
+    
+    // 90,90,90,90
+    fma       X159D, t4422, x37BF, x159D      // *c0022*c0404
+    fma       Y159D, t4422, y37BF, y159D      // *c0022*c0404
+    fnms      X37BF, t4422, y37BF, y159D      // *c0022*c0404
+    fms       Y37BF, t4422, x37BF, x159D      // *c0022*c0404
+    shufb     x1357, X159D, X37BF, shuf_AaBb  // *c0000*c0044
+    shufb     y1357, Y159D, Y37BF, shuf_AaBb  // *c0000*c0044
+    shufb     x9BDF, X159D, X37BF, shuf_CcDd  // *c2222*c0044
+    shufb     y9BDF, Y159D, Y37BF, shuf_CcDd  // *c2222*c0044
+
+    
+    // For 0 degrees use
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = x0 - x1
+    // y1' = y0 - y1
+    
+    
+    // 0,0,0,0
+    fma       XGKOS, c22XX, xIMQU, xGKOS      // c22XX = c2222*c0044
+    fma       YGKOS, c22XX, yIMQU, yGKOS
+    fnms      XIMQU, c22XX, xIMQU, xGKOS
+    fnms      YIMQU, c22XX, yIMQU, yGKOS
+    shufb     xGIKM, XGKOS, XIMQU, shuf_AaBb
+    shufb     yGIKM, YGKOS, YIMQU, shuf_AaBb
+    shufb     xOQSU, XGKOS, XIMQU, shuf_CcDd
+    shufb     yOQSU, YGKOS, YIMQU, shuf_CcDd
+
+    
+    // For 90 degrees use
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = y0 - y1
+    // y1' = x1 - x0
+    
+    
+    // 90,90,90,90
+    fma       XHLPT, K4422, xJNRV, xHLPT      // *c1111*c0022*c0404,    K0022 = (c3333/c1111) * t4422
+    fma       YHLPT, K4422, yJNRV, yHLPT      // *c1111*c0022*c0404
+    fnms      XJNRV, K4422, yJNRV, yHLPT      // *c1111*c0022*c0404
+    fms       YJNRV, K4422, xJNRV, xHLPT      // *c1111*c0022*c0404
+    shufb     xHJLN, XHLPT, XJNRV, shuf_AaBb  // *c1111*c0000*c0044
+    shufb     yHJLN, YHLPT, YJNRV, shuf_AaBb  // *c1111*c0000*c0044
+    shufb     xPRTV, XHLPT, XJNRV, shuf_CcDd  // *c1111*c2222*c0044
+    shufb     yPRTV, YHLPT, YJNRV, shuf_CcDd  // *c1111*c2222*c0044
+    
+
+    
+    // 16x1 butterflies of size 1
+    // --------------------------
+    //
+    // (0)
+    // 01
+    // 23
+    // 45
+    // 67
+    // 89
+    // AB
+    // CD
+    // EF
+    // GH
+    // IJ
+    // KL
+    // MN
+    // OP
+    // QR
+    // ST
+    // UV
+    //
+    // vectorized as... 
+    //
+    // (0,0,0,0)
+    // 0246
+    // 1357
+    //
+    // 8ACE
+    // 9BDF
+    //
+    // GIKM
+    // HJLN
+    //
+    // OQSU
+    // PRTV
+    
+    
+    // For 0 degrees use
+    //
+    // x0' = x0 + x1
+    // y0' = y0 + y1
+    //
+    // x1' = x0 - x1
+    // y1' = y0 - y1
+    
+    
+    // 0,0,0,0
+    fma       X0246, c0044, x1357, x0246
+    fma       Y0246, c0044, y1357, y0246
+    fnms      X1357, c0044, x1357, x0246
+    fnms      Y1357, c0044, y1357, y0246
+    shufb     x0123, X0246, X1357, shuf_AaBb
+    shufb     y0123, Y0246, Y1357, shuf_AaBb
+    shufb     x4567, X0246, X1357, shuf_CcDd
+    shufb     y4567, Y0246, Y1357, shuf_CcDd
+    
+    // 0,0,0,0
+    fma       X8ACE, c22XX, x9BDF, x8ACE      // c22XX = c2222*c0044
+    fma       Y8ACE, c22XX, y9BDF, y8ACE
+    fnms      X9BDF, c22XX, x9BDF, x8ACE
+    fnms      Y9BDF, c22XX, y9BDF, y8ACE
+    shufb     x89AB, X8ACE, X9BDF, shuf_AaBb
+    shufb     y89AB, Y8ACE, Y9BDF, shuf_AaBb
+    shufb     xCDEF, X8ACE, X9BDF, shuf_CcDd
+    shufb     yCDEF, Y8ACE, Y9BDF, shuf_CcDd
+    
+    // 0,0,0,0
+    fma       XGIKM, c11XX, xHJLN, xGIKM      // c11XX = c1111*c0044
+    fma       YGIKM, c11XX, yHJLN, yGIKM
+    fnms      XHJLN, c11XX, xHJLN, xGIKM
+    fnms      YHJLN, c11XX, yHJLN, yGIKM
+    shufb     xGHIJ, XGIKM, XHJLN, shuf_AaBb
+    shufb     yGHIJ, YGIKM, YHJLN, shuf_AaBb
+    shufb     xKLMN, XGIKM, XHJLN, shuf_CcDd
+    shufb     yKLMN, YGIKM, YHJLN, shuf_CcDd
+    
+    // 0,0,0,0
+    fma       XOQSU, cYYZZ, xPRTV, xOQSU      // cYYZZ = c1111*c2222*c0044
+    fma       YOQSU, cYYZZ, yPRTV, yOQSU
+    fnms      XPRTV, cYYZZ, xPRTV, xOQSU
+    fnms      YPRTV, cYYZZ, yPRTV, yOQSU
+    shufb     xOPQR, XOQSU, XPRTV, shuf_AaBb
+    shufb     yOPQR, YOQSU, YPRTV, shuf_AaBb
+    shufb     xSTUV, XOQSU, XPRTV, shuf_CcDd
+    shufb     ySTUV, YOQSU, YPRTV, shuf_CcDd
+    
+
+
+    ai        x, x, 128
+    ai        y, y, 128
+    
+
+    // store 32 real values
+    stqd      x0123, -0x80(x)
+    stqd      x4567, -0x70(x)
+    stqd      x89AB, -0x60(x)
+    stqd      xCDEF, -0x50(x)
+    stqd      xGHIJ, -0x40(x)
+    stqd      xKLMN, -0x30(x)
+    stqd      xOPQR, -0x20(x)
+    stqd      xSTUV, -0x10(x)
+    
+    // store 32 imaginary values
+    stqd      y0123, -0x80(y)
+    stqd      y4567, -0x70(y)
+    stqd      y89AB, -0x60(y)
+    stqd      yCDEF, -0x50(y)
+    stqd      yGHIJ, -0x40(y)
+    stqd      yKLMN, -0x30(y)
+    stqd      yOPQR, -0x20(y)
+    stqd      ySTUV, -0x10(y)
+    
+    
+
+    ai        cnt, cnt, -1
+    brnz      cnt, loop
+    
+    
+.endfunc
+
